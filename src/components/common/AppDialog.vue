@@ -86,8 +86,8 @@ onBeforeUnmount(() => dialog.value?.close())
   overflow: auto;
   transform: translate(-50%, -50%);
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-xl);
-  padding: 1.2rem;
+  border-radius: var(--radius-2xl);
+  padding: var(--space-5);
   background: var(--color-surface-strong);
   box-shadow: var(--shadow-sheet);
   animation: dialog-in var(--motion-medium) var(--ease-out);

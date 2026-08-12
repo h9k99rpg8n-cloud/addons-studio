@@ -2,6 +2,7 @@
 import AppBadge from '@/components/common/AppBadge.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import AppHeader from '@/components/navigation/AppHeader.vue'
+import StudioIcon from '@/components/common/StudioIcon.vue'
 </script>
 
 <template>
@@ -12,11 +13,11 @@ import AppHeader from '@/components/navigation/AppHeader.vue'
       <AppBadge tone="accent">Coming soon</AppBadge>
       <h2>Mobile-friendly creator guides</h2>
       <p>
-        Learn is reserved for guided Bedrock lessons. No fake tutorials or unfinished editors are included in 0.0.1.
+        Learn is reserved for guided Bedrock lessons. No fake tutorials or unfinished editors are included in Alpha 0.0.2.
       </p>
       <ul>
-        <li><AppIcon name="blocks" :size="18" />Contextual object workflows</li>
-        <li><AppIcon name="circle-dot" :size="18" />Material → Texture → UV → Rendering</li>
+        <li><StudioIcon name="block" :size="19" />Contextual object workflows</li>
+        <li><StudioIcon name="material" :size="19" />Material → Texture → UV → Rendering</li>
         <li><AppIcon name="shield" :size="18" />Validation and safe export practices</li>
       </ul>
     </section>
@@ -82,5 +83,6 @@ import AppHeader from '@/components/navigation/AppHeader.vue'
 
 .learn-coming-soon li svg {
   color: var(--color-accent-strong);
+  --studio-icon-accent: var(--color-brand-secondary);
 }
 </style>

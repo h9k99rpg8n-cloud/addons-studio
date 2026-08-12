@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Addons Studio Creative Core maskable app icon</title>
+  <rect width="512" height="512" fill="#0b1016"/>
+  <path d="m256 92 145 81-145 82-145-82Z" fill="#173b29"/>
+  <path d="m111 173 145 82v166l-145-81Z" fill="#35c86e"/>
+  <path d="m401 173-145 82v166l145-81Z" fill="#168b4b"/>
+  <path d="m256 92 145 81v167l-145 81-145-81V173Zm-145 81 145 82 145-82M256 255v166" fill="none" stroke="#88ebaa" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m256 200 56 32v64l-56 32-56-32v-64Z" fill="#f0b94d" stroke="#ffd47a" stroke-width="12" stroke-linejoin="round"/>
+  <path d="m200 232 56 32 56-32M256 264v64" fill="none" stroke="#8d5b00" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

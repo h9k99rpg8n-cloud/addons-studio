@@ -6,6 +6,7 @@ import AppBadge from '@/components/common/AppBadge.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import IconButton from '@/components/common/IconButton.vue'
+import StudioIcon from '@/components/common/StudioIcon.vue'
 import AddResourceSheet from '@/components/project/AddResourceSheet.vue'
 import ProjectActionsController from '@/components/project/ProjectActionsController.vue'
 import ProjectIcon from '@/components/project/ProjectIcon.vue'
@@ -106,6 +107,7 @@ function afterDelete(): void {
           <div class="project-overview__badges">
             <AppBadge tone="accent">{{ projectTypeLabels[project.projectType] }}</AppBadge>
             <AppBadge>{{ project.targetVersion }}</AppBadge>
+            <AppBadge>Alpha workspace</AppBadge>
             <AppBadge v-if="project.experimentalFeatures" tone="warning">Experimental</AppBadge>
           </div>
           <h1>{{ project.name }}</h1>
@@ -133,11 +135,11 @@ function afterDelete(): void {
       </section>
 
       <aside class="foundation-note">
-        <AppIcon name="shield" :size="21" />
+        <StudioIcon name="workspace" :size="23" />
         <div>
-          <strong>Foundation release</strong>
+          <strong>Visual foundation, real architecture</strong>
           <p>
-            Resource editors and export are intentionally not present yet. Future guided templates can register here without replacing this workspace.
+            Resource editors and export are intentionally not present yet. Future guided templates can register here without replacing this mobile workspace.
           </p>
         </div>
       </aside>
@@ -145,7 +147,7 @@ function afterDelete(): void {
 
     <footer v-if="project" class="workspace-add">
       <AppButton size="large" block @click="addOpen = true">
-        <template #icon><AppIcon name="plus" :size="22" /></template>
+        <template #icon><StudioIcon name="add-resource" :size="23" /></template>
         Add Resource
       </AppButton>
     </footer>
@@ -176,7 +178,7 @@ function afterDelete(): void {
   position: sticky;
   z-index: var(--z-header);
   top: 0;
-  min-height: calc(4.25rem + env(safe-area-inset-top));
+  min-height: calc(var(--header-height) + env(safe-area-inset-top));
   display: grid;
   grid-template-columns: var(--touch-target) minmax(0, 1fr) var(--touch-target);
   align-items: center;
@@ -221,15 +223,36 @@ function afterDelete(): void {
 }
 
 .project-overview {
+  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 1rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  padding: 1rem;
-  background: var(--color-surface);
+  overflow: hidden;
+  padding: var(--card-padding);
+  background:
+    radial-gradient(circle at 100% 0, var(--color-brand-glow), transparent 38%),
+    var(--color-surface);
   box-shadow: var(--shadow-card);
+}
+
+.project-overview::after {
+  position: absolute;
+  right: -2.75rem;
+  bottom: -3.75rem;
+  width: 8rem;
+  height: 8rem;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 14%, transparent);
+  border-radius: 50%;
+  content: '';
+  pointer-events: none;
+}
+
+.project-overview > * {
+  position: relative;
+  z-index: 1;
 }
 
 .project-overview__badges {
@@ -284,22 +307,24 @@ function afterDelete(): void {
 .resource-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.65rem;
+  gap: var(--space-3);
 }
 
 .foundation-note {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.75rem;
-  margin-top: 1rem;
-  border: 1px dashed var(--color-border-strong);
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: 0.85rem;
+  padding: var(--card-padding);
+  background: var(--color-surface-muted);
   color: var(--color-text-muted);
 }
 
-.foundation-note > svg {
+.foundation-note > :first-child {
   color: var(--color-accent-strong);
+  --studio-icon-accent: var(--color-brand-secondary);
 }
 
 .foundation-note strong {
@@ -317,8 +342,8 @@ function afterDelete(): void {
   position: fixed;
   z-index: var(--z-navigation);
   inset: auto 0 0;
-  padding: 0.7rem max(var(--page-gutter), env(safe-area-inset-right))
-    calc(0.7rem + env(safe-area-inset-bottom)) max(var(--page-gutter), env(safe-area-inset-left));
+  padding: var(--space-3) max(var(--page-gutter), env(safe-area-inset-right))
+    calc(var(--space-3) + env(safe-area-inset-bottom)) max(var(--page-gutter), env(safe-area-inset-left));
   border-top: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-app-bg) 94%, transparent);
   backdrop-filter: blur(18px);

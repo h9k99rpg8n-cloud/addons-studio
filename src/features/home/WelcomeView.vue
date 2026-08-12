@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import AppButton from '@/components/common/AppButton.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import BrandMark from '@/components/common/BrandMark.vue'
+import StudioIcon from '@/components/common/StudioIcon.vue'
+import { APP_RELEASE_LABEL } from '@/core/app/release'
 import { completeWelcome } from '@/core/storage/preferences'
 
 const router = useRouter()
@@ -17,9 +19,10 @@ function continueTo(routeName: 'create-project' | 'projects'): void {
 <template>
   <main class="welcome-view">
     <section class="welcome-view__hero">
-      <div class="welcome-view__mark"><BrandMark :size="76" /></div>
+      <div class="welcome-view__mark"><BrandMark :size="78" /></div>
       <p class="eyebrow">Your Bedrock workspace</p>
       <h1>Addons Studio</h1>
+      <span class="welcome-view__release">{{ APP_RELEASE_LABEL }}</span>
       <p class="welcome-view__subtitle">Create Bedrock without limits.</p>
       <p class="welcome-view__description">
         Create Minecraft Bedrock projects directly from your mobile browser.
@@ -31,7 +34,7 @@ function continueTo(routeName: 'create-project' | 'projects'): void {
           Create Project
         </AppButton>
         <AppButton variant="secondary" size="large" block @click="continueTo('projects')">
-          <template #icon><AppIcon name="folder" :size="21" /></template>
+          <template #icon><StudioIcon name="project" :size="22" /></template>
           Open Projects
         </AppButton>
       </div>
@@ -82,9 +85,21 @@ function continueTo(routeName: 'create-project' | 'projects'): void {
   place-items: center;
   margin-bottom: 1.35rem;
   border: 1px solid var(--color-border-strong);
-  border-radius: 2rem;
+  border-radius: var(--radius-2xl);
   background: var(--color-surface);
   box-shadow: var(--shadow-float);
+}
+
+.welcome-view__release {
+  margin-top: 0.65rem;
+  border: 1px solid var(--color-accent-border);
+  border-radius: var(--radius-pill);
+  padding: 0.24rem 0.55rem;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+  font-size: 0.64rem;
+  font-weight: 790;
+  letter-spacing: 0.04em;
 }
 
 .welcome-view h1 {

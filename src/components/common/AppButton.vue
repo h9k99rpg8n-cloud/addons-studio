@@ -48,10 +48,7 @@ withDefaults(
   font-weight: 720;
   line-height: 1.2;
   cursor: pointer;
-  transition:
-    transform var(--motion-fast),
-    background-color var(--motion-fast),
-    border-color var(--motion-fast);
+  transition: var(--transition-interactive), box-shadow var(--motion-fast) ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -65,7 +62,11 @@ withDefaults(
 }
 
 .app-button--primary {
-  background: var(--color-accent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-accent) 90%, white),
+    var(--color-accent)
+  );
   color: var(--color-on-accent);
   box-shadow: var(--shadow-accent);
 }
@@ -89,6 +90,12 @@ withDefaults(
   min-height: 54px;
   border-radius: var(--radius-lg);
   font-size: 1rem;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .app-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
 }
 
 .app-button--block {

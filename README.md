@@ -2,11 +2,11 @@
 
 Addons Studio is a free and open-source, mobile-first web application for creating Minecraft Bedrock Edition add-ons. The long-term goal is a complete creative environment that works directly from a phone, tablet, or desktop browser without assuming a mouse or desktop filesystem.
 
-> **Current release:** `0.0.1-dev` · Pre-Alpha · Mobile Foundation
+> **Current release:** Alpha `0.0.2` · Visual Identity and Icon System
 
 Addons Studio is an independent community project and is not affiliated with Mojang Studios or Microsoft. Minecraft is a trademark of Microsoft Corporation.
 
-## What works in 0.0.1-dev
+## What works in Alpha 0.0.2
 
 - First-launch welcome experience
 - Local project creation with validated namespaces
@@ -23,6 +23,10 @@ Addons Studio is an independent community project and is not affiliated with Moj
 - Accessible dialogs, focus states, and 44 × 44 CSS-pixel touch targets
 - PWA manifest, service worker, offline app shell, and installable icons
 - GitHub Pages subpath-safe build and deployment workflow
+- Original Creative Core Cube app mark with coordinated favicon and PWA assets
+- Custom, typed SVG icon family for Addons Studio resources and workspace concepts
+- Formalized brand, semantic-color, spacing, radius, shadow, typography, and motion tokens
+- Refined Home, project cards, workspace modules, resource sheet, Settings, and empty states
 
 This release does **not** generate `.mcaddon` or `.mcpack` files and does not include model, texture, animation, particle, audio, code, or visual-logic editors. Those buttons are not simulated.
 
@@ -40,10 +44,10 @@ The product architecture deliberately avoids desktop-only filesystem assumptions
 - Vue Router with hash history for static-host reliability
 - Dexie / IndexedDB
 - `vite-plugin-pwa` / Workbox
-- Lucide icons
+- Lucide for generic interface actions and an original Addons Studio SVG product-icon family
 - Vitest and fake IndexedDB for tests
 
-See [Architecture](docs/ARCHITECTURE.md) and [Third-party notices](THIRD_PARTY_NOTICES.md) for details.
+See [Architecture](docs/ARCHITECTURE.md), [Brand system](docs/BRAND.md), and [Third-party notices](THIRD_PARTY_NOTICES.md) for details.
 
 ## Development
 
@@ -78,7 +82,7 @@ The production bundle is written to `dist/`.
 
 The production build generates a web app manifest and service worker. After the app has been loaded successfully, the application shell can launch without a network connection. Project data is local and does not require a server.
 
-Clearing browser site data can remove local projects. A future release will add real import/export and recovery management; users should not treat this Pre-Alpha as their only copy of important work.
+Clearing browser site data can remove local projects. A future release will add real import/export and recovery management; users should not treat this Alpha as their only copy of important work.
 
 ## GitHub Pages
 

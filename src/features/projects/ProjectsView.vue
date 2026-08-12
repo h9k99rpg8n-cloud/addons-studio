@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import AppButton from '@/components/common/AppButton.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import IconButton from '@/components/common/IconButton.vue'
+import StudioIcon from '@/components/common/StudioIcon.vue'
 import AppHeader from '@/components/navigation/AppHeader.vue'
 import ProjectActionsController from '@/components/project/ProjectActionsController.vue'
 import ProjectCard from '@/components/project/ProjectCard.vue'
@@ -88,11 +89,11 @@ function openActions(project: StudioProject): void {
     </section>
 
     <section v-else class="empty-state">
-      <span><AppIcon name="folder" :size="32" /></span>
+      <span><StudioIcon name="project" :size="35" /></span>
       <h2>No projects yet</h2>
       <p>Your projects stay on this device in IndexedDB. Start with a clean one.</p>
       <AppButton size="large" @click="router.push({ name: 'create-project' })">
-        <template #icon><AppIcon name="plus" :size="21" /></template>
+        <template #icon><StudioIcon name="add-resource" :size="22" /></template>
         Create Project
       </AppButton>
     </section>
@@ -118,6 +119,7 @@ function openActions(project: StudioProject): void {
   padding: 0 0.85rem;
   background: var(--color-surface);
   color: var(--color-text-subtle);
+  box-shadow: var(--shadow-card);
 }
 
 .search-field:focus-within {
@@ -164,6 +166,7 @@ function openActions(project: StudioProject): void {
   border-radius: var(--radius-xl);
   background: var(--color-accent-soft);
   color: var(--color-accent-strong);
+  --studio-icon-accent: var(--color-brand-secondary);
 }
 
 .empty-state h2 {

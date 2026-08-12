@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the `0.0.1-dev` mobile foundation. It defines boundaries for future work; it is not a claim that the future editor engines already exist.
+This document describes the Alpha `0.0.2` mobile foundation and visual system. It defines boundaries for future work; it is not a claim that the future editor engines already exist.
 
 ## Application layers
 
@@ -10,6 +10,8 @@ This document describes the `0.0.1-dev` mobile foundation. It defines boundaries
 | `src/components/common` | Touch-friendly primitives, dialogs, sheets, feedback, and brand mark |
 | `src/components/navigation` | Main mobile navigation and headers |
 | `src/components/project` | Reusable project cards, actions, icons, and resource pickers |
+| `src/core/app` | Product release metadata shared by visible surfaces |
+| `src/core/icons` | Typed, original Addons Studio product-icon registry |
 | `src/features` | Lazy-loaded route-level product features |
 | `src/core/project` | Project rules, version registry, persistence scheduling, and resource templates |
 | `src/core/storage` | Dexie schema and lightweight preferences |
@@ -18,6 +20,7 @@ This document describes the `0.0.1-dev` mobile foundation. It defines boundaries
 | `src/core/errors` | Structured logging and user-safe error mapping |
 | `src/stores` | Pinia application state |
 | `src/styles` | Design tokens, themes, safe defaults, and accessibility utilities |
+| `src/assets/brand` | Editable SVG sources for the logo mark and PWA icon system |
 | `src/types` | Shared domain contracts |
 
 ## Project persistence
@@ -38,6 +41,8 @@ The current image importer crops and resizes project icons to 256 × 256 in the 
 
 The user-facing term **Material** is reserved for the abstraction that will later connect texture, UV, and rendering information. The current Material card and template are architectural placeholders, not a Material editor.
 
+The icon architecture makes the same separation as the product architecture. `AppIcon` wraps Lucide for universal UI actions such as back, close, search, and delete. `StudioIcon` renders only Addons Studio-specific concepts from a typed 24 × 24 registry. Categories and contextual templates reference that registry by type, so an invalid or mismatched product icon fails type checking.
+
 Large future engines should live behind explicit package boundaries:
 
 ```text
@@ -52,7 +57,13 @@ packages/
   addon-builder/
 ```
 
-No engine in that list exists in `0.0.1-dev`.
+No engine in that list exists in Alpha `0.0.2`.
+
+## Visual system
+
+The Creative Core Cube is the application mark. Its outer cube represents construction and modular resources; the gold inner cube represents the user’s creative work. The source SVGs are original project assets and do not reproduce Minecraft art or branding.
+
+CSS custom properties define brand and semantic colors, spacing, typography, radii, shadows, transitions, icon sizes, header heights, card padding, and sheet spacing. Components consume these tokens and remain functional in system, light, and dark themes. Resource tones support recognition, but cards also retain labels and distinct icon silhouettes so color is never the only signal.
 
 ## Routing and deployment
 

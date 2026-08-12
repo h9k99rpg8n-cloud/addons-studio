@@ -20,7 +20,7 @@ defineProps<{
 
 <style scoped>
 .app-header {
-  min-height: 4.25rem;
+  min-height: var(--header-height);
   display: flex;
   align-items: center;
   justify-content: space-between;

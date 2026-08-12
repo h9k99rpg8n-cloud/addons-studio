@@ -1,3 +1,5 @@
+import type { StudioIconName, StudioIconTone } from '@/core/icons/studioIcons'
+
 export const PROJECT_TYPES = ['addon', 'resource_pack', 'behavior_pack'] as const
 
 export type ProjectType = (typeof PROJECT_TYPES)[number]
@@ -89,7 +91,8 @@ export interface ResourceTemplate {
   category: ResourceCategoryId
   group: ResourceTemplateGroup
   name: string
-  icon: string
+  icon: StudioIconName
+  tone: StudioIconTone
   description: string
   supportedVersions?: string[]
   status: 'coming_soon' | 'available'

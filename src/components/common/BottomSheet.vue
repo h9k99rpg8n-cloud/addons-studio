@@ -97,8 +97,8 @@ onBeforeUnmount(() => dialog.value?.close())
   flex-direction: column;
   border: 1px solid var(--color-border-strong);
   border-bottom: 0;
-  border-radius: 24px 24px 0 0;
-  padding: 0 var(--page-gutter) calc(1rem + env(safe-area-inset-bottom));
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  padding: 0 var(--sheet-padding) calc(var(--space-4) + env(safe-area-inset-bottom));
   background: var(--color-surface-strong);
   box-shadow: var(--shadow-sheet);
   animation: sheet-in var(--motion-medium) var(--ease-out);
@@ -117,7 +117,7 @@ onBeforeUnmount(() => dialog.value?.close())
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.5rem 0 0.8rem;
+  padding: var(--space-2) 0 var(--space-4);
 }
 
 .bottom-sheet__header h2 {
@@ -135,6 +135,7 @@ onBeforeUnmount(() => dialog.value?.close())
   overflow: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  scrollbar-color: var(--color-border-strong) transparent;
 }
 
 @keyframes sheet-in {

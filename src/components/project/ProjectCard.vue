@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import AppIcon from '@/components/common/AppIcon.vue'
 import IconButton from '@/components/common/IconButton.vue'
+import StudioIcon from '@/components/common/StudioIcon.vue'
 import ProjectIcon from '@/components/project/ProjectIcon.vue'
+import type { StudioIconName } from '@/core/icons/studioIcons'
 import type { ProjectType, StudioProject } from '@/types/project'
 import { formatRelativeDate } from '@/utils/format'
 
@@ -19,6 +21,12 @@ const projectTypeLabels: Record<ProjectType, string> = {
   resource_pack: 'Resource Pack',
   behavior_pack: 'Behavior Pack',
 }
+
+const projectTypeIcons: Record<ProjectType, StudioIconName> = {
+  addon: 'project',
+  resource_pack: 'resource-pack',
+  behavior_pack: 'behavior-pack',
+}
 </script>
 
 <template>
@@ -26,11 +34,17 @@ const projectTypeLabels: Record<ProjectType, string> = {
     <button type="button" class="project-card__open" @click="$emit('open')">
       <ProjectIcon :icon="project.icon" />
       <span class="project-card__content">
-        <strong>{{ project.name }}</strong>
+        <span class="project-card__heading">
+          <strong>{{ project.name }}</strong>
+        </span>
         <span class="project-card__namespace">{{ project.namespace }}</span>
-        <span class="project-card__meta">
-          {{ projectTypeLabels[project.projectType] }} · {{ project.targetVersion }} ·
-          {{ formatRelativeDate(project.updatedAt) }}
+        <span class="project-card__meta" aria-label="Project details">
+          <span>
+            <StudioIcon :name="projectTypeIcons[project.projectType]" :size="14" />
+            {{ projectTypeLabels[project.projectType] }}
+          </span>
+          <span>{{ project.targetVersion }}</span>
+          <span>Edited {{ formatRelativeDate(project.updatedAt) }}</span>
         </span>
       </span>
       <AppIcon name="chevron-right" :size="19" class="project-card__chevron" />
@@ -52,18 +66,19 @@ const projectTypeLabels: Record<ProjectType, string> = {
   border-radius: var(--radius-xl);
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
+  transition: var(--transition-interactive), box-shadow var(--motion-fast) ease;
 }
 
 .project-card__open {
   width: 100%;
-  min-height: 6.3rem;
+  min-height: 7rem;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.85rem;
+  gap: var(--space-3);
   border: 0;
   border-radius: inherit;
-  padding: 0.95rem 3rem 0.95rem 0.95rem;
+  padding: var(--card-padding) 3.1rem var(--card-padding) var(--card-padding);
   background: transparent;
   color: inherit;
   text-align: left;
@@ -78,31 +93,51 @@ const projectTypeLabels: Record<ProjectType, string> = {
 .project-card__content {
   min-width: 0;
   display: grid;
-  gap: 0.2rem;
+  gap: 0.25rem;
 }
 
+.project-card__heading,
 .project-card__content strong,
-.project-card__namespace,
-.project-card__meta {
+.project-card__namespace {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .project-card__content strong {
-  font-size: 0.98rem;
+  font-size: 1rem;
   line-height: 1.3;
 }
 
 .project-card__namespace {
   color: var(--color-accent-strong);
   font-family: var(--font-mono);
-  font-size: 0.73rem;
+  font-size: 0.72rem;
 }
 
 .project-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.15rem;
   color: var(--color-text-subtle);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
+}
+
+.project-card__meta > span {
+  min-height: 1.45rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 0.17rem 0.38rem;
+  background: var(--color-surface-raised);
+}
+
+.project-card__meta > span:first-child {
+  color: var(--color-text-muted);
 }
 
 .project-card__chevron {
@@ -113,5 +148,13 @@ const projectTypeLabels: Record<ProjectType, string> = {
   position: absolute;
   z-index: 1;
   inset: 0.48rem 0.35rem auto auto;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .project-card:hover {
+    border-color: var(--color-border-strong);
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
+  }
 }
 </style>

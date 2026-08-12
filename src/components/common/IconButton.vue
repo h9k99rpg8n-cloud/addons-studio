@@ -40,10 +40,7 @@ withDefaults(
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition:
-    transform var(--motion-fast),
-    color var(--motion-fast),
-    background var(--motion-fast);
+  transition: var(--transition-interactive);
   -webkit-tap-highlight-color: transparent;
 }
 

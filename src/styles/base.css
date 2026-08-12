@@ -45,6 +45,11 @@ button {
   font: inherit;
 }
 
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -88,6 +93,61 @@ dialog {
   letter-spacing: 0.095em;
   line-height: 1.2;
   text-transform: uppercase;
+}
+
+.icon-surface {
+  width: var(--icon-container);
+  height: var(--icon-container);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--tone-border, var(--tone-brand-border));
+  border-radius: var(--radius-lg);
+  background: var(--tone-soft, var(--tone-brand-soft));
+  color: var(--tone-color, var(--tone-brand));
+  --studio-icon-accent: var(--tone-accent, var(--color-brand-secondary));
+}
+
+.tone-brand {
+  --tone-color: var(--tone-brand);
+  --tone-soft: var(--tone-brand-soft);
+  --tone-border: var(--tone-brand-border);
+}
+
+.tone-gold {
+  --tone-color: var(--tone-gold);
+  --tone-soft: var(--tone-gold-soft);
+  --tone-border: var(--tone-gold-border);
+  --tone-accent: var(--tone-brand);
+}
+
+.tone-sky {
+  --tone-color: var(--tone-sky);
+  --tone-soft: var(--tone-sky-soft);
+  --tone-border: var(--tone-sky-border);
+}
+
+.tone-violet {
+  --tone-color: var(--tone-violet);
+  --tone-soft: var(--tone-violet-soft);
+  --tone-border: var(--tone-violet-border);
+}
+
+.tone-rose {
+  --tone-color: var(--tone-rose);
+  --tone-soft: var(--tone-rose-soft);
+  --tone-border: var(--tone-rose-border);
+}
+
+.tone-cyan {
+  --tone-color: var(--tone-cyan);
+  --tone-soft: var(--tone-cyan-soft);
+  --tone-border: var(--tone-cyan-border);
+}
+
+.tone-orange {
+  --tone-color: var(--tone-orange);
+  --tone-soft: var(--tone-orange-soft);
+  --tone-border: var(--tone-orange-border);
 }
 
 .visually-hidden {

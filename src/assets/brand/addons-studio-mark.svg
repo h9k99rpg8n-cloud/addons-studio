@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title">
+  <title id="title">Addons Studio Creative Core mark</title>
+  <path d="M24 3.5 42 13.6 24 23.8 6 13.6Z" fill="#173b29"/>
+  <path d="M6 13.6 24 23.8v20.7L6 34.3Z" fill="#42d47a"/>
+  <path d="m42 13.6-18 10.2v20.7l18-10.2Z" fill="#168b4b"/>
+  <path d="M24 3.5 42 13.6v20.7L24 44.5 6 34.3V13.6Zm-18 10.1 18 10.2 18-10.2M24 23.8v20.7" fill="none" stroke="#88ebaa" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m24 15.7 6.8 3.8v7.7L24 31l-6.8-3.8v-7.7Z" fill="#f0b94d" stroke="#ffd47a" stroke-width="1.9" stroke-linejoin="round"/>
+  <path d="m17.2 19.5 6.8 3.8 6.8-3.8M24 23.3V31" fill="none" stroke="#8d5b00" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

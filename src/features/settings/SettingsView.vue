@@ -6,6 +6,7 @@ import AppButton from '@/components/common/AppButton.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import BrandMark from '@/components/common/BrandMark.vue'
 import AppHeader from '@/components/navigation/AppHeader.vue'
+import { APP_RELEASE_LABEL, APP_RELEASE_NAME, APP_VERSION } from '@/core/app/release'
 import { toAppError } from '@/core/errors/AppError'
 import { projectRepository } from '@/core/project/projectRepository'
 import { useThemeStore } from '@/stores/theme'
@@ -122,9 +123,9 @@ onMounted(refreshStorage)
         <div>
           <div class="about-card__title">
             <h2 id="about-heading">Addons Studio</h2>
-            <AppBadge tone="accent">Pre-Alpha</AppBadge>
+            <AppBadge tone="accent">{{ APP_RELEASE_LABEL }}</AppBadge>
           </div>
-          <p>Version 0.0.1-dev</p>
+          <p>Version {{ APP_VERSION }} · {{ APP_RELEASE_NAME }}</p>
         </div>
       </header>
       <ul class="about-list">
@@ -164,7 +165,7 @@ onMounted(refreshStorage)
 .settings-section {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  padding: 1rem;
+  padding: var(--card-padding);
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
 }
@@ -284,6 +285,14 @@ onMounted(refreshStorage)
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+}
+
+.about-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 100% 0, var(--color-brand-glow), transparent 35%),
+    var(--color-surface);
 }
 
 .about-list {

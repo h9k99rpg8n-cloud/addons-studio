@@ -24,7 +24,7 @@ export default defineConfig(() => {
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: 'auto',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png'],
+        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'safari-pinned-tab.svg'],
         manifest: {
           id: base,
           name: 'Addons Studio',
@@ -34,8 +34,8 @@ export default defineConfig(() => {
           scope: base,
           display: 'standalone',
           orientation: 'any',
-          background_color: '#0d1117',
-          theme_color: '#111821',
+          background_color: '#0b1016',
+          theme_color: '#0b1016',
           categories: ['developer', 'productivity', 'utilities'],
           icons: [
             {
@@ -64,7 +64,7 @@ export default defineConfig(() => {
           clientsClaim: true,
           skipWaiting: true,
           navigateFallback: 'index.html',
-          globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}'],
+          globPatterns: ['**/*.{js,css,html}'],
         },
       }),
     ],

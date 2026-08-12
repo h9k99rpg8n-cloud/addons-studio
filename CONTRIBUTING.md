@@ -34,6 +34,8 @@ npm run build
 - Use strict TypeScript and small, explicit domain contracts.
 - Put domain behavior under `src/core`, not inside presentation components.
 - Keep route-level features lazy-loaded.
+- Use Lucide only for generic actions; product-specific concepts belong in the typed `StudioIcon` family.
+- Preserve the Creative Core Cube proportions and documented brand palette when changing brand assets.
 - Add tests for project-schema, persistence, or registry changes.
 - Use semantic HTML and visible focus states.
 - Keep every essential action usable by touch with no hover dependency.

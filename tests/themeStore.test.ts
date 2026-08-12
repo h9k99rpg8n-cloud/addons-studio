@@ -7,6 +7,7 @@ describe('theme store', () => {
   beforeEach(() => {
     localStorage.clear()
     document.documentElement.removeAttribute('data-theme')
+    document.head.innerHTML = '<meta name="theme-color" content="#000000">'
     setActivePinia(createPinia())
   })
 
@@ -31,5 +32,8 @@ describe('theme store', () => {
     expect(theme.resolved).toBe('light')
     expect(localStorage.getItem('addons-studio:theme')).toBe('light')
     expect(document.documentElement.dataset.theme).toBe('light')
+    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe(
+      '#f3f7f4',
+    )
   })
 })

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import AppIcon from '@/components/common/AppIcon.vue'
+import StudioIcon from '@/components/common/StudioIcon.vue'
 import type { ResourceCategoryDefinition } from '@/features/studio/resourceCategories'
 
 defineProps<{
@@ -13,53 +13,62 @@ defineEmits<{ open: [] }>()
 <template>
   <button type="button" class="resource-card" @click="$emit('open')">
     <span
-      class="resource-card__icon"
-      :class="{ 'resource-card__icon--material': category.id === 'materials' }"
+      class="resource-card__icon icon-surface"
+      :class="`tone-${category.tone}`"
     >
-      <span v-if="category.id === 'materials'" class="material-orb" aria-hidden="true" />
-      <AppIcon v-else :name="category.icon" :size="25" />
+      <StudioIcon :name="category.icon" :size="28" />
     </span>
+    <span class="resource-card__status">Coming soon</span>
     <span class="resource-card__content">
       <strong>{{ category.label }}</strong>
       <small>{{ category.description }}</small>
     </span>
-    <span class="resource-card__count">{{ count ?? 0 }}</span>
+    <span class="resource-card__count" :aria-label="`${count ?? 0} resources`">{{ count ?? 0 }}</span>
   </button>
 </template>
 
 <style scoped>
 .resource-card {
   min-width: 0;
-  min-height: 8.5rem;
+  min-height: 9.4rem;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-content: space-between;
-  gap: 0.65rem;
+  gap: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
-  padding: 0.85rem;
+  padding: var(--card-padding);
   background: var(--color-surface);
   color: var(--color-text);
   text-align: left;
   box-shadow: var(--shadow-card);
   cursor: pointer;
+  transition: var(--transition-interactive);
   -webkit-tap-highlight-color: transparent;
 }
 
 .resource-card:active {
-  border-color: var(--color-accent-border);
+  border-color: var(--tone-border, var(--color-accent-border));
   background: var(--color-surface-raised);
   transform: scale(0.985);
 }
 
 .resource-card__icon {
-  width: 2.85rem;
-  height: 2.85rem;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-lg);
-  background: var(--color-accent-soft);
-  color: var(--color-accent-strong);
+  width: 3.15rem;
+  height: 3.15rem;
+}
+
+.resource-card__status {
+  align-self: start;
+  justify-self: end;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 0.22rem 0.42rem;
+  background: var(--color-surface-muted);
+  color: var(--color-text-subtle);
+  font-size: 0.62rem;
+  font-weight: 760;
+  letter-spacing: 0.02em;
 }
 
 .resource-card__content {
@@ -71,7 +80,7 @@ defineEmits<{ open: [] }>()
 
 .resource-card__content strong {
   overflow: hidden;
-  font-size: 0.9rem;
+  font-size: 0.94rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -79,7 +88,7 @@ defineEmits<{ open: [] }>()
 .resource-card__content small {
   overflow: hidden;
   color: var(--color-text-subtle);
-  font-size: 0.68rem;
+  font-size: var(--font-size-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -99,12 +108,11 @@ defineEmits<{ open: [] }>()
   font-weight: 800;
 }
 
-.material-orb {
-  width: 1.75rem;
-  height: 1.75rem;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 70%, white);
-  border-radius: 50%;
-  background: radial-gradient(circle at 34% 28%, white 0 5%, var(--color-accent) 28%, #163c32 78%);
-  box-shadow: inset -0.25rem -0.3rem 0.45rem rgb(0 0 0 / 0.28);
+@media (hover: hover) and (pointer: fine) {
+  .resource-card:hover {
+    border-color: var(--tone-border, var(--color-accent-border));
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
+  }
 }
 </style>

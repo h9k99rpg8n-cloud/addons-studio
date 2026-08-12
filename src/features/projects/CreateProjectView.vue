@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import AppButton from '@/components/common/AppButton.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import IconButton from '@/components/common/IconButton.vue'
+import StudioIcon from '@/components/common/StudioIcon.vue'
 import ProjectIcon from '@/components/project/ProjectIcon.vue'
 import { toAppError } from '@/core/errors/AppError'
 import {
@@ -29,7 +30,7 @@ const form = reactive<CreateProjectInput>({
   name: '',
   namespace: 'project',
   description: '',
-  icon: { kind: 'builtin', value: 'blocks' },
+  icon: { kind: 'builtin', value: 'project' },
   projectType: 'addon',
   targetVersion: DEFAULT_BEDROCK_VERSION,
   experimentalFeatures: false,
@@ -43,12 +44,12 @@ const creating = ref(false)
 const fileInput = ref<HTMLInputElement>()
 
 const builtInIcons = [
-  { id: 'blocks', label: 'Blocks' },
-  { id: 'package', label: 'Package' },
-  { id: 'box', label: 'Cube' },
+  { id: 'project', label: 'Project' },
+  { id: 'block', label: 'Block' },
+  { id: 'resource-pack', label: 'Resource Pack' },
+  { id: 'behavior-pack', label: 'Behavior Pack' },
   { id: 'layers', label: 'Layers' },
-  { id: 'code', label: 'Code' },
-  { id: 'sparkles', label: 'Spark' },
+  { id: 'sparkle', label: 'Spark' },
 ] as const
 
 const projectTypes: readonly { value: ProjectType; label: string; description: string }[] = [
@@ -239,7 +240,7 @@ async function submit(): Promise<void> {
               :aria-label="icon.label"
               @click="chooseBuiltInIcon(icon.id)"
             >
-              <AppIcon :name="icon.id" :size="23" />
+              <StudioIcon :name="icon.id" :size="24" />
             </button>
           </div>
         </fieldset>
@@ -293,7 +294,7 @@ async function submit(): Promise<void> {
         <label class="experiment-option">
           <span>
             <strong>Enable experimental project features</strong>
-            <small>No unsupported Minecraft flags are applied in 0.0.1.</small>
+            <small>No unsupported Minecraft flags are applied in Alpha 0.0.2.</small>
           </span>
           <input v-model="form.experimentalFeatures" type="checkbox" role="switch" />
         </label>

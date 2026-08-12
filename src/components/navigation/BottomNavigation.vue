@@ -58,6 +58,7 @@ const items = [
   font-size: 0.68rem;
   font-weight: 700;
   text-decoration: none;
+  transition: color var(--motion-fast) ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -82,6 +83,7 @@ const items = [
 }
 
 .bottom-navigation__item.router-link-active .bottom-navigation__icon {
+  border: 1px solid var(--color-accent-border);
   background: var(--color-accent-soft);
   color: var(--color-accent-strong);
 }

@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Addons Studio is currently Pre-Alpha. Security fixes are applied to the latest code on `main`; older development snapshots are not supported.
+Addons Studio is currently Alpha. Security fixes are applied to the latest code on `main`; older development snapshots are not supported.
 
 ## Reporting a vulnerability
 
@@ -20,6 +20,6 @@ You should receive an acknowledgment through GitHub as soon as a maintainer revi
 
 ## Current security model
 
-`0.0.1-dev` has no user accounts, cloud synchronization, server API, add-on export, code execution editor, or collaboration system. Project metadata stays in the browser’s IndexedDB. Imported project icons are restricted to PNG/JPG, capped at 2 MB, decoded by the browser, cropped, and resized before storage.
+Alpha `0.0.2` has no user accounts, cloud synchronization, server API, add-on export, code execution editor, or collaboration system. Project metadata stays in the browser’s IndexedDB. Imported project icons are restricted to PNG/JPG, capped at 2 MB, decoded by the browser, cropped, and resized before storage.
 
 Users remain responsible for their device and browser security. Clearing site data can remove local projects.
