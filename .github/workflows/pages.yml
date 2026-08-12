@@ -4,14 +4,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  # Re-deploy after GitHub's legacy branch build while the repository is
-  # transitioning to the Actions source. This prevents that older deployment
-  # from overwriting the Vite artifact for new visitors.
-  workflow_run:
-    workflows: ["pages build and deployment"]
-    types: [completed]
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -41,6 +36,34 @@ jobs:
 
       - name: Build production app
         run: npm run build
+
+      - name: Wait for legacy Pages build
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          for attempt in {1..30}; do
+            legacy_status="$(
+              curl --fail --silent --show-error \
+                --header "Accept: application/vnd.github+json" \
+                --header "Authorization: Bearer ${GH_TOKEN}" \
+                --header "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/repos/${REPOSITORY}/actions/runs?head_sha=${COMMIT_SHA}&per_page=20" \
+                | jq -r '[.workflow_runs[] | select(.name == "pages build and deployment")] | first | .status // "missing"'
+            )"
+
+            if [ "${legacy_status}" = "completed" ]; then
+              echo "Legacy Pages build completed; deploying the Vite artifact."
+              exit 0
+            fi
+
+            echo "Waiting for legacy Pages build (${legacy_status}, attempt ${attempt}/30)."
+            sleep 5
+          done
+
+          echo "Legacy Pages build did not finish in time; continuing with the Actions deployment."
 
       - name: Verify Pages entry point
         run: test -f dist/index.html -a -f dist/manifest.webmanifest -a -f dist/sw.js
