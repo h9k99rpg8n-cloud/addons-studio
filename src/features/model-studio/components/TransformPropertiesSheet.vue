@@ -18,6 +18,7 @@ const emit = defineEmits<{
 
 const draft = ref<StudioCube>()
 const beforeEdit = ref<StudioCube>()
+const activeLabel = ref<string>()
 
 watch(
   () => [props.open, props.element] as const,
@@ -27,8 +28,10 @@ watch(
   { immediate: true, deep: true },
 )
 
-function beginEdit(): void {
-  if (props.element) beforeEdit.value = cloneStudioCube(props.element)
+function beginEdit(label: string): void {
+  if (!props.element) return
+  beforeEdit.value = cloneStudioCube(props.element)
+  activeLabel.value = label
 }
 
 function preview(): void {
@@ -39,13 +42,22 @@ function preview(): void {
   emit('preview', cloneStudioCube(draft.value))
 }
 
-function commit(label: string): void {
+function commit(): void {
   if (!draft.value || !beforeEdit.value) return
   preview()
   const before = cloneStudioCube(beforeEdit.value)
   const after = cloneStudioCube(draft.value)
+  const label = activeLabel.value ?? 'Edit cube'
   beforeEdit.value = undefined
+  activeLabel.value = undefined
   if (JSON.stringify(before) !== JSON.stringify(after)) emit('commit', { before, after, label })
+}
+
+function finishAndClose(): void {
+  // iOS can dismiss the sheet/keyboard without dispatching a reliable change
+  // event. Flushing the active edit here keeps numeric edits undoable.
+  commit()
+  emit('close')
 }
 </script>
 
@@ -54,7 +66,7 @@ function commit(label: string): void {
     :open="open && Boolean(element)"
     :title="element?.name ?? 'Cube Properties'"
     description="Exact values update the viewport immediately"
-    @close="$emit('close')"
+    @close="finishAndClose"
   >
     <div v-if="draft" class="transform-editor">
       <label class="name-field">
@@ -64,9 +76,9 @@ function commit(label: string): void {
           class="text-input"
           maxlength="60"
           autocomplete="off"
-          @focus="beginEdit"
+          @focus="beginEdit('Rename cube')"
           @input="preview"
-          @change="commit('Rename cube')"
+          @blur="commit"
         />
       </label>
 
@@ -79,9 +91,9 @@ function commit(label: string): void {
             type="number"
             inputmode="decimal"
             step="0.1"
-            @focus="beginEdit"
+            @focus="beginEdit('Move cube')"
             @input="preview"
-            @change="commit('Move cube')"
+            @blur="commit"
           />
         </label>
       </fieldset>
@@ -96,9 +108,9 @@ function commit(label: string): void {
             inputmode="decimal"
             min="0.25"
             step="0.25"
-            @focus="beginEdit"
+            @focus="beginEdit('Resize cube')"
             @input="preview"
-            @change="commit('Resize cube')"
+            @blur="commit"
           />
         </label>
       </fieldset>
@@ -112,9 +124,9 @@ function commit(label: string): void {
             type="number"
             inputmode="decimal"
             step="1"
-            @focus="beginEdit"
+            @focus="beginEdit('Rotate cube')"
             @input="preview"
-            @change="commit('Rotate cube')"
+            @blur="commit"
           />
         </label>
       </fieldset>
