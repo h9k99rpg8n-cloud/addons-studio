@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Re-deploy after GitHub's legacy branch build while the repository is
+  # transitioning to the Actions source. This prevents that older deployment
+  # from overwriting the Vite artifact for new visitors.
+  workflow_run:
+    workflows: ["pages build and deployment"]
+    types: [completed]
 
 permissions:
   contents: read
