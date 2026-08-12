@@ -15,6 +15,11 @@ describe('ResourceTemplateRegistry', () => {
       name: 'Material',
       status: 'coming_soon',
     })
+    expect(registry.get('model')).toMatchObject({
+      category: 'models',
+      name: 'Model',
+      status: 'available',
+    })
     expect(registry.list()).toHaveLength(11)
   })
 

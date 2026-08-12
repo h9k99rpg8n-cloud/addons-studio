@@ -15,14 +15,14 @@ function readPngDimensions(path: string): { width: number; height: number } {
   }
 }
 
-describe('Alpha 0.0.2 branding assets', () => {
+describe('release metadata and branding assets', () => {
   it('keeps visible release metadata aligned with package metadata', () => {
     const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
       version: string
     }
 
     expect(APP_VERSION).toBe(packageJson.version)
-    expect(APP_RELEASE_LABEL).toBe('Alpha 0.0.2')
+    expect(APP_RELEASE_LABEL).toBe('Alpha 0.0.3')
   })
 
   it.each([

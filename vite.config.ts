@@ -65,6 +65,14 @@ export default defineConfig(() => {
           skipWaiting: true,
           navigateFallback: 'index.html',
           globPatterns: ['**/*.{js,css,html}'],
+          // Keep the offline shell light. The 3D editor is fetched only when
+          // Model Studio is opened instead of taxing every mobile install.
+          globIgnores: [
+            '**/three.module-*.js',
+            '**/OrbitControls-*.js',
+            '**/ModelStudioView-*.js',
+            '**/ModelStudioView-*.css',
+          ],
         },
       }),
     ],
@@ -76,7 +84,8 @@ export default defineConfig(() => {
     build: {
       target: 'es2022',
       cssCodeSplit: true,
-      chunkSizeWarningLimit: 500,
+      // Three.js is an intentional, isolated route chunk rather than startup code.
+      chunkSizeWarningLimit: 750,
     },
     test: {
       environment: 'happy-dom',

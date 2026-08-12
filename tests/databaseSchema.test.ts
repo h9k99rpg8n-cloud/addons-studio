@@ -1,3 +1,4 @@
+import Dexie from 'dexie'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { DATABASE_SCHEMA_VERSION } from '@/core/project/constants'
@@ -11,9 +12,12 @@ describe('database schema', () => {
     await database.delete()
   })
 
-  it('exposes the versioned projects, snapshots, and settings stores', () => {
-    expect(DATABASE_SCHEMA_VERSION).toBe(1)
+  it('exposes the versioned project, folder, model, reference, snapshot, and settings stores', () => {
+    expect(DATABASE_SCHEMA_VERSION).toBe(2)
     expect(database.tables.map((table) => table.name).sort()).toEqual([
+      'modelReferenceAssets',
+      'models',
+      'projectFolders',
       'projects',
       'settings',
       'snapshots',
@@ -22,5 +26,42 @@ describe('database schema', () => {
     expect(database.snapshots.schema.indexes.map((index) => index.name)).toContain(
       '[projectId+createdAt]',
     )
+    expect(database.models.schema.indexes.map((index) => index.name)).toContain(
+      '[projectId+identifier]',
+    )
+    expect(database.projects.schema.indexes.map((index) => index.name)).toContain('folderId')
+  })
+
+  it('upgrades an Alpha 0.0.2 database without losing projects', async () => {
+    const name = `addons-studio-upgrade-${crypto.randomUUID()}`
+    const legacy = new Dexie(name)
+    legacy.version(1).stores({
+      projects:
+        '&id, name, namespace, projectType, targetVersion, createdAt, updatedAt, schemaVersion',
+      snapshots: '&id, projectId, createdAt, [projectId+createdAt]',
+      settings: '&key, updatedAt',
+    })
+    await legacy.table('projects').add({
+      id: 'legacy-project',
+      name: 'Legacy Project',
+      namespace: 'legacy_project',
+      icon: { kind: 'builtin', value: 'cube' },
+      projectType: 'addon',
+      targetVersion: '1.26.0',
+      experimentalFeatures: false,
+      createdAt: 1,
+      updatedAt: 1,
+      schemaVersion: 1,
+      revision: 1,
+    })
+    legacy.close()
+
+    const upgraded = new AddonsStudioDatabase(name)
+    await upgraded.open()
+    expect((await upgraded.projects.get('legacy-project'))?.name).toBe('Legacy Project')
+    expect(upgraded.tables.map((table) => table.name)).toContain('models')
+    expect(upgraded.tables.map((table) => table.name)).toContain('projectFolders')
+    upgraded.close()
+    await upgraded.delete()
   })
 })

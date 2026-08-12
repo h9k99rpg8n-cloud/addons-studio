@@ -18,7 +18,10 @@ defineEmits<{ open: [] }>()
     >
       <StudioIcon :name="category.icon" :size="28" />
     </span>
-    <span class="resource-card__status">Coming soon</span>
+    <span
+      class="resource-card__status"
+      :class="{ 'resource-card__status--available': category.status === 'available' }"
+    >{{ category.status === 'available' ? 'Open' : 'Coming soon' }}</span>
     <span class="resource-card__content">
       <strong>{{ category.label }}</strong>
       <small>{{ category.description }}</small>
@@ -69,6 +72,12 @@ defineEmits<{ open: [] }>()
   font-size: 0.62rem;
   font-weight: 760;
   letter-spacing: 0.02em;
+}
+
+.resource-card__status--available {
+  border-color: var(--color-accent-border);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
 }
 
 .resource-card__content {

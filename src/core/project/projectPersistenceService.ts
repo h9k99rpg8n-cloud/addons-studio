@@ -23,6 +23,7 @@ function toUpdate(project: StudioProject): ProjectUpdate {
     projectType: project.projectType,
     targetVersion: project.targetVersion,
     experimentalFeatures: project.experimentalFeatures,
+    folderId: project.folderId,
   }
 }
 

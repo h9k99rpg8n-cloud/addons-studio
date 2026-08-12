@@ -29,9 +29,28 @@ export const router = createRouter({
       component: () => import('@/features/projects/CreateProjectView.vue'),
     },
     {
+      path: '/projects/folder/:folderId',
+      name: 'project-folder',
+      component: () => import('@/features/projects/ProjectsView.vue'),
+      props: true,
+      meta: { mainNav: true },
+    },
+    {
       path: '/project/:id',
       name: 'workspace',
       component: () => import('@/features/studio/ProjectWorkspaceView.vue'),
+      props: true,
+    },
+    {
+      path: '/project/:projectId/models',
+      name: 'models',
+      component: () => import('@/features/model-studio/ModelsView.vue'),
+      props: true,
+    },
+    {
+      path: '/project/:projectId/models/:modelId',
+      name: 'model-studio',
+      component: () => import('@/features/model-studio/ModelStudioView.vue'),
       props: true,
     },
     {

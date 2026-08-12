@@ -44,6 +44,7 @@ export class ProjectRepository {
       updatedAt: now,
       schemaVersion: PROJECT_SCHEMA_VERSION,
       revision: 1,
+      folderId: input.folderId,
     }
 
     try {
@@ -127,26 +128,102 @@ export class ProjectRepository {
     const namespace = await this.findAvailableNamespace(`${source.namespace}_copy`)
     const nameSuffix = ' Copy'
     const name = `${source.name.slice(0, 80 - nameSuffix.length)}${nameSuffix}`
-
-    return this.createProject({
+    const now = Date.now()
+    const duplicate: StudioProject = {
+      ...cloneProject(source),
+      id: createId(),
       name,
       namespace,
-      description: source.description,
-      icon: source.icon,
-      projectType: source.projectType,
-      targetVersion: source.targetVersion,
-      experimentalFeatures: source.experimentalFeatures,
-    })
+      createdAt: now,
+      updatedAt: now,
+      revision: 1,
+    }
+
+    try {
+      const [sourceModels, sourceAssets] = await Promise.all([
+        this.database.models.where('projectId').equals(source.id).toArray(),
+        this.database.modelReferenceAssets.where('projectId').equals(source.id).toArray(),
+      ])
+      const modelIds = new Map(sourceModels.map((model) => [model.id, createId()]))
+      const assetIds = new Map(sourceAssets.map((asset) => [asset.id, createId()]))
+
+      const duplicatedModels = sourceModels.map((model) => {
+        const elementIds = new Map(model.elements.map((element) => [element.id, createId()]))
+        return {
+          ...structuredClone(model),
+          id: modelIds.get(model.id)!,
+          projectId: duplicate.id,
+          elements: model.elements.map((element) => ({
+            ...structuredClone(element),
+            id: elementIds.get(element.id)!,
+            parentId: element.parentId ? elementIds.get(element.parentId) : undefined,
+          })),
+          references: model.references
+            .filter((reference) => assetIds.has(reference.assetId))
+            .map((reference) => ({
+              ...structuredClone(reference),
+              id: createId(),
+              assetId: assetIds.get(reference.assetId)!,
+            })),
+          createdAt: now,
+          updatedAt: now,
+          revision: 1,
+        }
+      })
+      const duplicatedAssets = sourceAssets.flatMap((asset) => {
+        const modelId = modelIds.get(asset.modelId)
+        if (!modelId) return []
+        return [{
+          ...asset,
+          id: assetIds.get(asset.id)!,
+          modelId,
+          projectId: duplicate.id,
+          createdAt: now,
+        }]
+      })
+
+      await this.database.transaction(
+        'rw',
+        [
+          this.database.projects,
+          this.database.snapshots,
+          this.database.models,
+          this.database.modelReferenceAssets,
+        ],
+        async () => {
+          await this.database.projects.add(duplicate)
+          await this.addSnapshot(duplicate, 'created')
+          if (duplicatedModels.length) await this.database.models.bulkAdd(duplicatedModels)
+          if (duplicatedAssets.length) {
+            await this.database.modelReferenceAssets.bulkAdd(duplicatedAssets)
+          }
+        },
+      )
+      return cloneProject(duplicate)
+    } catch (error) {
+      throw new AppError(
+        'PROJECT_SAVE_FAILED',
+        'Addons Studio could not duplicate this project. No partial copy was kept.',
+        { cause: error },
+      )
+    }
   }
 
   async deleteProject(id: string): Promise<void> {
     try {
       await this.database.transaction(
         'rw',
-        [this.database.projects, this.database.snapshots],
+        [
+          this.database.projects,
+          this.database.snapshots,
+          this.database.models,
+          this.database.modelReferenceAssets,
+        ],
         async () => {
           await this.database.projects.delete(id)
           await this.database.snapshots.where('projectId').equals(id).delete()
+          await this.database.models.where('projectId').equals(id).delete()
+          await this.database.modelReferenceAssets.where('projectId').equals(id).delete()
         },
       )
     } catch (error) {

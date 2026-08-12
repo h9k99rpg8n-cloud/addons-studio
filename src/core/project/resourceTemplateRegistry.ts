@@ -81,8 +81,8 @@ export const INITIAL_RESOURCE_TEMPLATES: readonly ResourceTemplate[] = [
     name: 'Model',
     icon: 'model',
     tone: 'sky',
-    description: 'Model Studio is intentionally not part of Alpha 0.0.2.',
-    status: 'coming_soon',
+    description: 'Create a cube-based model in Model Studio.',
+    status: 'available',
   },
   {
     id: 'material',

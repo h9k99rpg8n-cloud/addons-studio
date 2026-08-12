@@ -1,0 +1,196 @@
+<script setup lang="ts">
+import { ref, watch } from 'vue'
+
+import BottomSheet from '@/components/common/BottomSheet.vue'
+import type { StudioCube, StudioModelElement } from '@/types/model'
+
+const props = defineProps<{
+  open: boolean
+  element?: StudioCube
+}>()
+
+const emit = defineEmits<{
+  close: []
+  preview: [element: StudioModelElement]
+  commit: [payload: { before: StudioModelElement; after: StudioModelElement; label: string }]
+}>()
+
+const draft = ref<StudioCube>()
+const beforeEdit = ref<StudioCube>()
+
+watch(
+  () => [props.open, props.element] as const,
+  () => {
+    if (props.element) draft.value = structuredClone(props.element)
+  },
+  { immediate: true, deep: true },
+)
+
+function beginEdit(): void {
+  if (props.element) beforeEdit.value = structuredClone(props.element)
+}
+
+function preview(): void {
+  if (!draft.value) return
+  draft.value.size.x = Math.max(0.25, Number(draft.value.size.x) || 0.25)
+  draft.value.size.y = Math.max(0.25, Number(draft.value.size.y) || 0.25)
+  draft.value.size.z = Math.max(0.25, Number(draft.value.size.z) || 0.25)
+  emit('preview', structuredClone(draft.value))
+}
+
+function commit(label: string): void {
+  if (!draft.value || !beforeEdit.value) return
+  preview()
+  const before = structuredClone(beforeEdit.value)
+  const after = structuredClone(draft.value)
+  beforeEdit.value = undefined
+  if (JSON.stringify(before) !== JSON.stringify(after)) emit('commit', { before, after, label })
+}
+</script>
+
+<template>
+  <BottomSheet
+    :open="open && Boolean(element)"
+    :title="element?.name ?? 'Cube Properties'"
+    description="Exact values update the viewport immediately"
+    @close="$emit('close')"
+  >
+    <div v-if="draft" class="transform-editor">
+      <label class="name-field">
+        <span>Name</span>
+        <input
+          v-model="draft.name"
+          class="text-input"
+          maxlength="60"
+          autocomplete="off"
+          @focus="beginEdit"
+          @input="preview"
+          @change="commit('Rename cube')"
+        />
+      </label>
+
+      <fieldset>
+        <legend>Position</legend>
+        <label v-for="axis in (['x', 'y', 'z'] as const)" :key="`position-${axis}`">
+          <span :class="`axis axis--${axis}`">{{ axis.toUpperCase() }}</span>
+          <input
+            v-model.number="draft.position[axis]"
+            type="number"
+            inputmode="decimal"
+            step="0.1"
+            @focus="beginEdit"
+            @input="preview"
+            @change="commit('Move cube')"
+          />
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Size</legend>
+        <label v-for="axis in (['x', 'y', 'z'] as const)" :key="`size-${axis}`">
+          <span :class="`axis axis--${axis}`">{{ axis.toUpperCase() }}</span>
+          <input
+            v-model.number="draft.size[axis]"
+            type="number"
+            inputmode="decimal"
+            min="0.25"
+            step="0.25"
+            @focus="beginEdit"
+            @input="preview"
+            @change="commit('Resize cube')"
+          />
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Rotation (degrees)</legend>
+        <label v-for="axis in (['x', 'y', 'z'] as const)" :key="`rotation-${axis}`">
+          <span :class="`axis axis--${axis}`">{{ axis.toUpperCase() }}</span>
+          <input
+            v-model.number="draft.rotation[axis]"
+            type="number"
+            inputmode="decimal"
+            step="1"
+            @focus="beginEdit"
+            @input="preview"
+            @change="commit('Rotate cube')"
+          />
+        </label>
+      </fieldset>
+    </div>
+  </BottomSheet>
+</template>
+
+<style scoped>
+.transform-editor {
+  display: grid;
+  gap: var(--space-5);
+  padding-bottom: var(--space-2);
+}
+
+.name-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.name-field > span,
+fieldset legend {
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  font-weight: 780;
+}
+
+fieldset {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+fieldset legend {
+  grid-column: 1 / -1;
+  margin-bottom: var(--space-2);
+}
+
+fieldset label {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1.6rem minmax(0, 1fr);
+  align-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-input-bg);
+}
+
+fieldset label:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: var(--focus-ring);
+}
+
+fieldset input {
+  width: 100%;
+  min-width: 0;
+  min-height: 3rem;
+  border: 0;
+  outline: 0;
+  padding: 0 0.35rem;
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.axis {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-align: center;
+}
+
+.axis--x { color: #f46b73; }
+.axis--y { color: #62d77c; }
+.axis--z { color: #62a9ff; }
+</style>

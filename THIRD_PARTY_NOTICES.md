@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Addons Studio is licensed under the MIT License. The following direct dependencies are independent projects distributed under their own licenses. Versions reflect the Alpha `0.0.2` lockfile; `package-lock.json` is the source of truth for the complete transitive dependency graph.
+Addons Studio is licensed under the MIT License. The following direct dependencies are independent projects distributed under their own licenses. Versions reflect the Alpha `0.0.3` lockfile; `package-lock.json` is the source of truth for the complete transitive dependency graph.
 
 | Dependency | Version | Author / project | Repository | License | Purpose in Addons Studio |
 | --- | ---: | --- | --- | --- | --- |
@@ -9,6 +9,7 @@ Addons Studio is licensed under the MIT License. The following direct dependenci
 | Pinia | 4.0.3 | Eduardo San Martin Morote / Vue.js | [vuejs/pinia](https://github.com/vuejs/pinia) | MIT | Application and project state |
 | Dexie | 4.4.4 | David Fahlander / Dexie.js | [dexie/Dexie.js](https://github.com/dexie/Dexie.js) | Apache-2.0 | IndexedDB schema, queries, and transactions |
 | Lucide Vue | 1.31.0 | Eric Fennis / Lucide | [lucide-icons/lucide](https://github.com/lucide-icons/lucide) | ISC | Generic touch-interface action icons; product-specific icons are original Addons Studio work |
+| Three.js | 0.185.1 | Ricardo Cabello and contributors / three.js | [mrdoob/three.js](https://github.com/mrdoob/three.js) | MIT | Lazy-loaded WebGL viewport, geometry preview, camera controls, lighting, and raycasting in Model Studio |
 | Vite | 8.2.1 | Evan You / Vite | [vitejs/vite](https://github.com/vitejs/vite) | MIT | Development server and production bundler |
 | Vite Plugin Vue | 6.0.8 | Evan You / Vite | [vitejs/vite-plugin-vue](https://github.com/vitejs/vite-plugin-vue) | MIT | Vue single-file component compilation |
 | vite-plugin-pwa | 1.3.0 | Anthony Fu / Vite PWA | [vite-pwa/vite-plugin-pwa](https://github.com/vite-pwa/vite-plugin-pwa) | MIT | Manifest and offline service-worker generation |
@@ -24,6 +25,7 @@ Addons Studio is licensed under the MIT License. The following direct dependenci
 | typescript-eslint | 8.67.0 | typescript-eslint contributors | [typescript-eslint/typescript-eslint](https://github.com/typescript-eslint/typescript-eslint) | MIT | TypeScript-aware ESLint integration |
 | globals | 16.5.0 | Sindre Sorhus | [sindresorhus/globals](https://github.com/sindresorhus/globals) | MIT | Browser, Node, and test global definitions for ESLint |
 | Node.js type definitions | 26.2.0 | DefinitelyTyped contributors | [DefinitelyTyped/types/node](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node) | MIT | Build-configuration type definitions |
+| Three.js type definitions | 0.185.4 | DefinitelyTyped contributors | [DefinitelyTyped/types/three](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/three) | MIT | Static types for the lazy-loaded Model Studio renderer |
 
 No source code from Blockbench, bridge., or another GPL application is included in Addons Studio.
 

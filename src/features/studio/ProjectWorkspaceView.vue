@@ -12,6 +12,7 @@ import ProjectActionsController from '@/components/project/ProjectActionsControl
 import ProjectIcon from '@/components/project/ProjectIcon.vue'
 import ResourceCategoryCard from '@/components/project/ResourceCategoryCard.vue'
 import { toAppError } from '@/core/errors/AppError'
+import { modelRepository } from '@/core/model/modelRepository'
 import { RESOURCE_CATEGORIES } from '@/features/studio/resourceCategories'
 import { useProjectStore } from '@/stores/projects'
 import { useToastStore } from '@/stores/toasts'
@@ -25,6 +26,7 @@ const loading = ref(true)
 const loadError = ref('')
 const addOpen = ref(false)
 const projectMenuOpen = ref(false)
+const modelCount = ref(0)
 
 const project = computed(() =>
   projects.activeProject?.id === props.id
@@ -42,6 +44,7 @@ onMounted(async () => {
   try {
     await projects.loadProjects()
     await projects.openProject(props.id)
+    modelCount.value = await modelRepository.countModels(props.id)
   } catch (error) {
     loadError.value = toAppError(error, 'Addons Studio could not open this project.').userMessage
   } finally {
@@ -49,7 +52,11 @@ onMounted(async () => {
   }
 })
 
-function showCategoryPlaceholder(label: string): void {
+function openCategory(id: string, label: string): void {
+  if (id === 'models') {
+    void router.push({ name: 'models', params: { projectId: props.id } })
+    return
+  }
   toasts.push({
     type: 'info',
     message: `${label} tools are coming in a future Addons Studio update.`,
@@ -58,7 +65,15 @@ function showCategoryPlaceholder(label: string): void {
 
 function selectTemplate(template: ResourceTemplate): void {
   addOpen.value = false
+  if (template.id === 'model' && template.status === 'available') {
+    void router.push({ name: 'models', params: { projectId: props.id } })
+    return
+  }
   toasts.push({ type: 'info', message: template.description })
+}
+
+function categoryCount(id: string): number {
+  return id === 'models' ? modelCount.value : 0
 }
 
 function afterDelete(): void {
@@ -121,15 +136,15 @@ function afterDelete(): void {
             <p class="eyebrow">Project Workspace</p>
             <h2 id="resources-heading">Resources</h2>
           </div>
-          <span>0 total</span>
+          <span>{{ modelCount }} total</span>
         </header>
         <div class="resource-grid">
           <ResourceCategoryCard
             v-for="category in RESOURCE_CATEGORIES"
             :key="category.id"
             :category="category"
-            :count="0"
-            @open="showCategoryPlaceholder(category.label)"
+            :count="categoryCount(category.id)"
+            @open="openCategory(category.id, category.label)"
           />
         </div>
       </section>
@@ -137,9 +152,9 @@ function afterDelete(): void {
       <aside class="foundation-note">
         <StudioIcon name="workspace" :size="23" />
         <div>
-          <strong>Visual foundation, real architecture</strong>
+          <strong>Model Studio is now available</strong>
           <p>
-            Resource editors and export are intentionally not present yet. Future guided templates can register here without replacing this mobile workspace.
+            Create local cube-based models with touch transforms. Other resource editors and Minecraft export remain clearly marked for future updates.
           </p>
         </div>
       </aside>

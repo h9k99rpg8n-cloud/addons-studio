@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
+import { createStudioCube } from '@/core/model/modelFactory'
+import { ModelRepository } from '@/core/model/modelRepository'
 import { DEFAULT_BEDROCK_VERSION } from '@/core/project/bedrockVersions'
 import { ProjectRepository } from '@/core/project/projectRepository'
 import { AddonsStudioDatabase } from '@/core/storage/database'
@@ -64,6 +66,39 @@ describe('ProjectRepository', () => {
     expect(firstCopy.name).toBe('Río Grande Urbanismo Copy')
     expect(firstCopy.namespace).toBe('rio_grande_urbanismo_copy')
     expect(secondCopy.namespace).toBe('rio_grande_urbanismo_copy_2')
+  })
+
+  it('duplicates models and reference assets as independent project data', async () => {
+    const source = await repository.createProject(input())
+    const models = new ModelRepository(database)
+    let model = await models.createModel({
+      projectId: source.id,
+      name: 'Urban Block',
+      identifier: 'geometry.rio_grande.urban_block',
+    })
+    model.elements.push(createStudioCube())
+    model = await models.saveModel(model)
+    model = (
+      await models.addReferenceAsset(
+        model,
+        new File(['reference'], 'front.png', { type: 'image/png' }),
+      )
+    ).model
+
+    const duplicate = await repository.duplicateProject(source.id)
+    const copiedModels = await models.listModels(duplicate.id)
+    const copiedAssets = await models.listReferenceAssets(copiedModels[0]!.id)
+
+    expect(copiedModels).toHaveLength(1)
+    expect(copiedModels[0]).toMatchObject({
+      projectId: duplicate.id,
+      identifier: model.identifier,
+    })
+    expect(copiedModels[0]?.id).not.toBe(model.id)
+    expect(copiedModels[0]?.elements[0]?.id).not.toBe(model.elements[0]?.id)
+    expect(copiedAssets).toHaveLength(1)
+    expect(copiedAssets[0]?.projectId).toBe(duplicate.id)
+    expect(copiedModels[0]?.references[0]?.assetId).toBe(copiedAssets[0]?.id)
   })
 
   it('updates project metadata without changing its identity', async () => {

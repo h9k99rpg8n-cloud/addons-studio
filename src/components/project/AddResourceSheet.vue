@@ -57,7 +57,9 @@ function templatesFor(group: ResourceTemplateGroup): ResourceTemplate[] {
               <strong>{{ template.name }}</strong>
               <small>{{ template.description }}</small>
             </span>
-            <AppBadge>Coming soon</AppBadge>
+            <AppBadge :tone="template.status === 'available' ? 'accent' : 'neutral'">
+              {{ template.status === 'available' ? 'Available' : 'Coming soon' }}
+            </AppBadge>
           </button>
         </div>
       </section>

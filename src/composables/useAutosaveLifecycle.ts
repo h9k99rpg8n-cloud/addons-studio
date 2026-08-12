@@ -1,6 +1,7 @@
 import { onBeforeUnmount, onMounted } from 'vue'
 
 import { logger } from '@/core/errors/logger'
+import { modelPersistenceService } from '@/core/model/modelPersistenceService'
 import { RECOVERY_INTERVAL_MS } from '@/core/project/constants'
 import { useProjectStore } from '@/stores/projects'
 
@@ -9,7 +10,10 @@ export function useAutosaveLifecycle(): void {
   let recoveryTimer: ReturnType<typeof setInterval> | undefined
 
   const flush = () => {
-    void projects.flushPendingSaves().catch((error: unknown) => {
+    void Promise.all([
+      projects.flushPendingSaves(),
+      modelPersistenceService.flushAll(),
+    ]).catch((error: unknown) => {
       logger.error('Lifecycle save failed', {
         area: 'project-persistence',
         action: 'pagehide',

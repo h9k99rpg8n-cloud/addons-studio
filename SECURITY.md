@@ -20,6 +20,6 @@ You should receive an acknowledgment through GitHub as soon as a maintainer revi
 
 ## Current security model
 
-Alpha `0.0.2` has no user accounts, cloud synchronization, server API, add-on export, code execution editor, or collaboration system. Project metadata stays in the browser’s IndexedDB. Imported project icons are restricted to PNG/JPG, capped at 2 MB, decoded by the browser, cropped, and resized before storage.
+Alpha `0.0.3` has no user accounts, cloud synchronization, server API, add-on export, code execution editor, or collaboration system. Projects, folders, internal model data, and modeling references stay in the browser’s IndexedDB. Imported project icons are restricted to PNG/JPG and capped at 2 MB; reference images are restricted to PNG/JPG and capped at 12 MB. Images are decoded by the browser before use.
 
 Users remain responsible for their device and browser security. Clearing site data can remove local projects.

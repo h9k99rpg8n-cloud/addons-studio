@@ -22,6 +22,8 @@ export interface StudioProject {
   updatedAt: number
   schemaVersion: number
   revision: number
+  /** Undefined means that the project is displayed at the root level. */
+  folderId?: string
 }
 
 export interface CreateProjectInput {
@@ -32,6 +34,7 @@ export interface CreateProjectInput {
   projectType: ProjectType
   targetVersion: string
   experimentalFeatures: boolean
+  folderId?: string
 }
 
 export type ProjectUpdate = Partial<
@@ -44,8 +47,21 @@ export type ProjectUpdate = Partial<
     | 'projectType'
     | 'targetVersion'
     | 'experimentalFeatures'
+    | 'folderId'
   >
 >
+
+export interface StudioProjectFolder {
+  id: string
+  name: string
+  createdAt: number
+  updatedAt: number
+  schemaVersion: number
+}
+
+export interface CreateProjectFolderInput {
+  name: string
+}
 
 export interface ProjectSnapshot {
   id: string

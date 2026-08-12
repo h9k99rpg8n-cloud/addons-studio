@@ -37,6 +37,8 @@ npm run build
 - Use Lucide only for generic actions; product-specific concepts belong in the typed `StudioIcon` family.
 - Preserve the Creative Core Cube proportions and documented brand palette when changing brand assets.
 - Add tests for project-schema, persistence, or registry changes.
+- Keep Model Studio operations on the extensible `StudioModel` representation; do not couple editor gestures directly to Bedrock JSON.
+- Dispose WebGL resources and listeners when leaving a 3D route, and keep invisible touch pickers larger than visible gizmo handles.
 - Use semantic HTML and visible focus states.
 - Keep every essential action usable by touch with no hover dependency.
 - Preserve 44 × 44 CSS-pixel minimum interactive targets.

@@ -2,11 +2,11 @@
 
 Addons Studio is a free and open-source, mobile-first web application for creating Minecraft Bedrock Edition add-ons. The long-term goal is a complete creative environment that works directly from a phone, tablet, or desktop browser without assuming a mouse or desktop filesystem.
 
-> **Current release:** Alpha `0.0.2` · Visual Identity and Icon System
+> **Current release:** Alpha `0.0.3` · Project Folders + Model Studio Foundation
 
 Addons Studio is an independent community project and is not affiliated with Mojang Studios or Microsoft. Minecraft is a trademark of Microsoft Corporation.
 
-## What works in Alpha 0.0.2
+## What works in Alpha 0.0.3
 
 - First-launch welcome experience
 - Local project creation with validated namespaces
@@ -16,6 +16,7 @@ Addons Studio is an independent community project and is not affiliated with Moj
 - IndexedDB project persistence through Dexie
 - Debounced autosave infrastructure and bounded recovery snapshots
 - Recent projects, reopen, rename, duplicate, and confirmed deletion
+- One-level project folders with create, open, rename, safe delete, and move-to-root/folder actions
 - Mobile Project Workspace with reusable resource categories
 - Extensible contextual resource-template registry
 - Explicit “Coming soon” states for unimplemented editors
@@ -27,14 +28,20 @@ Addons Studio is an independent community project and is not affiliated with Moj
 - Custom, typed SVG icon family for Addons Studio resources and workspace concepts
 - Formalized brand, semantic-color, spacing, radius, shadow, typography, and motion tokens
 - Refined Home, project cards, workspace modules, resource sheet, Settings, and empty states
+- Functional Models resource list with validated `geometry.namespace.name` identifiers
+- Lazy-loaded Three.js Model Studio with a perspective viewport, lighting, Bedrock-unit grid, origin axes, and touch camera controls
+- Multiple-cube creation, touch selection, finger-sized Move/Rotate/Resize gizmo pickers, and exact numeric transforms
+- Mobile outliner with select, rename, visibility, and delete actions
+- PNG/JPG front-reference planes with position, size, opacity, visibility, and safe local storage
+- Command-based cube undo/redo plus debounced model autosave and explicit save status
 
-This release does **not** generate `.mcaddon` or `.mcpack` files and does not include model, texture, animation, particle, audio, code, or visual-logic editors. Those buttons are not simulated.
+This release does **not** generate `.mcaddon` or `.mcpack` files. Model Studio is an internal-format foundation, not a complete Bedrock geometry exporter; bones, UV mapping, materials, texture painting, animation, particles, audio, code, and visual logic remain unimplemented and are not simulated.
 
 ## Mobile-first principles
 
 The primary targets are iPhone/Safari, Android/Chrome, iPad, Android tablets, and installed mobile PWAs. The interface uses bottom navigation, full-screen flows, bottom sheets, large touch targets, dynamic viewport units, and all four `safe-area-inset-*` values. Desktop support is useful but secondary.
 
-The product architecture deliberately avoids desktop-only filesystem assumptions. Project metadata is stored in IndexedDB because the File System Access API is not consistently available on mobile Safari.
+The product architecture deliberately avoids desktop-only filesystem assumptions. Project metadata, folders, internal models, and separate reference-image blobs are stored in IndexedDB because the File System Access API is not consistently available on mobile Safari.
 
 ## Technology
 
@@ -43,6 +50,7 @@ The product architecture deliberately avoids desktop-only filesystem assumptions
 - Pinia
 - Vue Router with hash history for static-host reliability
 - Dexie / IndexedDB
+- Three.js, lazy-loaded only for Model Studio
 - `vite-plugin-pwa` / Workbox
 - Lucide for generic interface actions and an original Addons Studio SVG product-icon family
 - Vitest and fake IndexedDB for tests

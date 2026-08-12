@@ -99,7 +99,7 @@ function importPlaceholder(): void {
         <span class="action-card__icon"><AppIcon name="upload" :size="24" /></span>
         <span>
           <strong>Import Project <AppBadge>Coming soon</AppBadge></strong>
-          <small>Import is not implemented in Alpha 0.0.2</small>
+          <small>Import is not implemented in Alpha 0.0.3</small>
         </span>
         <AppIcon name="info" :size="19" />
       </button>
@@ -139,7 +139,7 @@ function importPlaceholder(): void {
 
     <aside class="home-tip">
       <span><StudioIcon name="material" :size="23" /></span>
-      <p><strong>Designed for what comes next.</strong> Materials, models, logic, and more already have a consistent home—without pretending their editors exist yet.</p>
+      <p><strong>Model Studio has begun.</strong> Build cube geometry with touch controls while Materials, logic, and advanced editors remain clearly marked for future releases.</p>
     </aside>
 
     <ProjectActionsController
