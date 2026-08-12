@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Addons Studio</title>
+  <rect width="512" height="512" rx="112" fill="#111821"/>
+  <path d="M256 82 405 168v176L256 430 107 344V168L256 82Z" fill="#182532" stroke="#79E39D" stroke-width="20" stroke-linejoin="round"/>
+  <path d="m107 168 149 88 149-88M256 256v174" fill="none" stroke="#79E39D" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m256 82 74 43-149 88-74-45 149-86Z" fill="#B3F3C4" opacity=".92"/>
+  <rect x="222" y="222" width="68" height="68" rx="16" fill="#111821" stroke="#F4FBF6" stroke-width="14"/>
+</svg>

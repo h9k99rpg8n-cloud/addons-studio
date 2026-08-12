@@ -1,0 +1,49 @@
+{
+  "name": "addons-studio",
+  "version": "0.0.1-dev",
+  "private": true,
+  "description": "A free, open-source, mobile-first studio for Minecraft Bedrock add-ons.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/h9k99rpg8n-cloud/addons-studio.git"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "dexie": "^4.4.4",
+    "@lucide/vue": "^1.31.0",
+    "pinia": "^4.0.3",
+    "vue": "^3.5.41",
+    "vue-router": "^5.2.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.2.0",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "@vue/test-utils": "^2.4.11",
+    "eslint": "^10.8.1",
+    "eslint-plugin-vue": "^10.10.0",
+    "fake-indexeddb": "^6.2.5",
+    "globals": "^16.4.0",
+    "happy-dom": "^20.11.2",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0",
+    "vite": "^8.2.1",
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^4.1.10",
+    "vue-tsc": "^3.3.9"
+  }
+}
