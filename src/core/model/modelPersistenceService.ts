@@ -1,4 +1,5 @@
 import { logger } from '@/core/errors/logger'
+import { cloneStudioModel } from '@/core/model/modelFactory'
 import { modelRepository, type ModelRepository } from '@/core/model/modelRepository'
 import { AUTOSAVE_DELAY_MS } from '@/core/project/constants'
 import type { StudioModel } from '@/types/model'
@@ -30,7 +31,7 @@ export class ModelPersistenceService {
     callbacks.onSaving?.()
     const timer = setTimeout(() => void this.flush(model.id), delay)
     this.pending.set(model.id, {
-      model: structuredClone(model),
+      model: cloneStudioModel(model),
       timer,
       ...callbacks,
     })

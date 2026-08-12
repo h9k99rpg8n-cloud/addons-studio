@@ -1,4 +1,4 @@
-import type { StudioCube, StudioModel } from '@/types/model'
+import type { StudioCube, StudioModel, StudioReferenceImage } from '@/types/model'
 import { createId } from '@/utils/createId'
 
 export const MODEL_SCHEMA_VERSION = 1
@@ -15,8 +15,45 @@ export function createStudioCube(index = 0): StudioCube {
   }
 }
 
+export function cloneStudioCube(cube: StudioCube): StudioCube {
+  return {
+    id: cube.id,
+    type: 'cube',
+    name: cube.name,
+    position: { ...cube.position },
+    size: { ...cube.size },
+    rotation: { ...cube.rotation },
+    visible: cube.visible,
+    parentId: cube.parentId,
+  }
+}
+
+export function cloneStudioReference(reference: StudioReferenceImage): StudioReferenceImage {
+  return {
+    id: reference.id,
+    assetId: reference.assetId,
+    name: reference.name,
+    view: reference.view,
+    position: { ...reference.position },
+    size: { ...reference.size },
+    opacity: reference.opacity,
+    visible: reference.visible,
+  }
+}
+
 export function cloneStudioModel(model: StudioModel): StudioModel {
-  return structuredClone(model)
+  return {
+    id: model.id,
+    projectId: model.projectId,
+    name: model.name,
+    identifier: model.identifier,
+    elements: model.elements.map(cloneStudioCube),
+    references: model.references.map(cloneStudioReference),
+    createdAt: model.createdAt,
+    updatedAt: model.updatedAt,
+    schemaVersion: model.schemaVersion,
+    revision: model.revision,
+  }
 }
 
 export function createEmptyStudioModel(

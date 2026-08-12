@@ -23,6 +23,7 @@ import type {
   StudioModel,
   StudioModelElement,
 } from '@/types/model'
+import { cloneStudioCube } from '@/core/model/modelFactory'
 
 const loadThree = () => import('three')
 type ThreeModule = Awaited<ReturnType<typeof loadThree>>
@@ -420,8 +421,8 @@ function onPointerDown(event: PointerEvent): void {
         axis,
         startX: event.clientX,
         startY: event.clientY,
-        before: structuredClone(element),
-        latest: structuredClone(element),
+        before: cloneStudioCube(element),
+        latest: cloneStudioCube(element),
       }
       liveTransform.value = transformValueLabel(element, axis)
       if (controls) controls.enabled = false
@@ -457,7 +458,7 @@ function onPointerMove(event: PointerEvent): void {
   event.preventDefault()
   const dx = event.clientX - drag.startX
   const dy = event.clientY - drag.startY
-  const latest = structuredClone(drag.before)
+  const latest = cloneStudioCube(drag.before)
 
   if (props.tool === 'rotate') {
     latest.rotation[drag.axis] = rounded(drag.before.rotation[drag.axis] + (dx - dy) * 0.65, 0.5)

@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 
 import BottomSheet from '@/components/common/BottomSheet.vue'
+import { cloneStudioReference } from '@/core/model/modelFactory'
 import type { StudioReferenceImage } from '@/types/model'
 
 const props = defineProps<{
@@ -19,7 +20,7 @@ const draft = ref<StudioReferenceImage>()
 watch(
   () => [props.open, props.reference] as const,
   () => {
-    if (props.reference) draft.value = structuredClone(props.reference)
+    if (props.reference) draft.value = cloneStudioReference(props.reference)
   },
   { immediate: true, deep: true },
 )
@@ -29,7 +30,7 @@ function update(): void {
   draft.value.size.x = Math.max(0.25, Number(draft.value.size.x) || 0.25)
   draft.value.size.y = Math.max(0.25, Number(draft.value.size.y) || 0.25)
   draft.value.opacity = Math.min(1, Math.max(0.05, Number(draft.value.opacity) || 0.05))
-  emit('update', structuredClone(draft.value))
+  emit('update', cloneStudioReference(draft.value))
 }
 </script>
 

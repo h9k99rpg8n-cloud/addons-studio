@@ -8,7 +8,11 @@ import type {
 } from '@/types/model'
 import { createId } from '@/utils/createId'
 
-import { cloneStudioModel, createEmptyStudioModel } from './modelFactory'
+import {
+  cloneStudioModel,
+  cloneStudioReference,
+  createEmptyStudioModel,
+} from './modelFactory'
 import { validateModelInput, validateStoredModel } from './modelValidation'
 
 const REFERENCE_MIME_TYPES = ['image/png', 'image/jpeg'] as const
@@ -166,13 +170,13 @@ export class ModelRepository {
           }
           const saved = this.prepareSavedModel(existing, {
             ...cloneStudioModel(model),
-            references: [...model.references, structuredClone(reference)],
+            references: [...model.references.map(cloneStudioReference), cloneStudioReference(reference)],
           })
           await this.database.models.put(saved)
           await this.database.modelReferenceAssets.add(asset)
           return {
             asset: { ...asset },
-            reference: structuredClone(reference),
+            reference: cloneStudioReference(reference),
             model: cloneStudioModel(saved),
           }
         },

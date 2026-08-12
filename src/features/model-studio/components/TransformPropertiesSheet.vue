@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 
 import BottomSheet from '@/components/common/BottomSheet.vue'
+import { cloneStudioCube } from '@/core/model/modelFactory'
 import type { StudioCube, StudioModelElement } from '@/types/model'
 
 const props = defineProps<{
@@ -21,13 +22,13 @@ const beforeEdit = ref<StudioCube>()
 watch(
   () => [props.open, props.element] as const,
   () => {
-    if (props.element) draft.value = structuredClone(props.element)
+    if (props.element) draft.value = cloneStudioCube(props.element)
   },
   { immediate: true, deep: true },
 )
 
 function beginEdit(): void {
-  if (props.element) beforeEdit.value = structuredClone(props.element)
+  if (props.element) beforeEdit.value = cloneStudioCube(props.element)
 }
 
 function preview(): void {
@@ -35,14 +36,14 @@ function preview(): void {
   draft.value.size.x = Math.max(0.25, Number(draft.value.size.x) || 0.25)
   draft.value.size.y = Math.max(0.25, Number(draft.value.size.y) || 0.25)
   draft.value.size.z = Math.max(0.25, Number(draft.value.size.z) || 0.25)
-  emit('preview', structuredClone(draft.value))
+  emit('preview', cloneStudioCube(draft.value))
 }
 
 function commit(label: string): void {
   if (!draft.value || !beforeEdit.value) return
   preview()
-  const before = structuredClone(beforeEdit.value)
-  const after = structuredClone(draft.value)
+  const before = cloneStudioCube(beforeEdit.value)
+  const after = cloneStudioCube(draft.value)
   beforeEdit.value = undefined
   if (JSON.stringify(before) !== JSON.stringify(after)) emit('commit', { before, after, label })
 }

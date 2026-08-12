@@ -1,5 +1,7 @@
 import type { StudioModel, StudioModelElement } from '@/types/model'
 
+import { cloneStudioCube } from './modelFactory'
+
 export interface ModelCommand {
   readonly label: string
   redo(model: StudioModel): void
@@ -7,7 +9,7 @@ export interface ModelCommand {
 }
 
 function cloneElement(element: StudioModelElement): StudioModelElement {
-  return structuredClone(element)
+  return cloneStudioCube(element)
 }
 
 function replaceElement(model: StudioModel, element: StudioModelElement): void {

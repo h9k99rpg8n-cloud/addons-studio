@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { reactive } from 'vue'
 
 import {
   createElementCommand,
@@ -10,7 +11,7 @@ import { createEmptyStudioModel, createStudioCube } from '@/core/model/modelFact
 
 describe('Model Studio command history', () => {
   it('undoes and redoes cube creation and deletion', () => {
-    const model = createEmptyStudioModel('project', 'Slab', 'geometry.project.slab')
+    const model = reactive(createEmptyStudioModel('project', 'Slab', 'geometry.project.slab'))
     const cube = createStudioCube()
     const history = new ModelCommandHistory()
 

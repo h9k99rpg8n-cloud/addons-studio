@@ -14,7 +14,11 @@ import {
   ModelCommandHistory,
   updateElementCommand,
 } from '@/core/model/modelHistory'
-import { createStudioCube } from '@/core/model/modelFactory'
+import {
+  cloneStudioCube,
+  cloneStudioReference,
+  createStudioCube,
+} from '@/core/model/modelFactory'
 import { modelPersistenceService } from '@/core/model/modelPersistenceService'
 import { modelRepository } from '@/core/model/modelRepository'
 import { useToastStore } from '@/stores/toasts'
@@ -112,7 +116,7 @@ function flushOnHide(): void {
 function replaceElement(element: StudioModelElement): void {
   if (!model.value) return
   const index = model.value.elements.findIndex((entry) => entry.id === element.id)
-  if (index >= 0) model.value.elements.splice(index, 1, structuredClone(element))
+  if (index >= 0) model.value.elements.splice(index, 1, cloneStudioCube(element))
 }
 
 function scheduleSave(): void {
@@ -194,8 +198,8 @@ function toggleElement(id: string): void {
   if (!model.value) return
   const element = model.value.elements.find((entry) => entry.id === id)
   if (!element) return
-  const before = structuredClone(element)
-  const after = structuredClone(element)
+  const before = cloneStudioCube(element)
+  const after = cloneStudioCube(element)
   after.visible = !after.visible
   history.execute(updateElementCommand(before, after, after.visible ? 'Show cube' : 'Hide cube'), model.value)
   bumpHistory()
@@ -215,8 +219,8 @@ function renameElement(): void {
   if (!model.value || !renameTargetId.value || !renameValue.value.trim()) return
   const element = model.value.elements.find((entry) => entry.id === renameTargetId.value)
   if (!element) return
-  const before = structuredClone(element)
-  const after = structuredClone(element)
+  const before = cloneStudioCube(element)
+  const after = cloneStudioCube(element)
   after.name = renameValue.value.trim().slice(0, 60)
   history.execute(updateElementCommand(before, after, 'Rename cube'), model.value)
   bumpHistory()
@@ -273,14 +277,14 @@ function updateReference(reference: StudioReferenceImage): void {
   if (!model.value) return
   const index = model.value.references.findIndex((entry) => entry.id === reference.id)
   if (index < 0) return
-  model.value.references.splice(index, 1, structuredClone(reference))
+  model.value.references.splice(index, 1, cloneStudioReference(reference))
   scheduleSave()
 }
 
 function toggleReference(id: string): void {
   const reference = model.value?.references.find((entry) => entry.id === id)
   if (!reference) return
-  updateReference({ ...structuredClone(reference), visible: !reference.visible })
+  updateReference({ ...cloneStudioReference(reference), visible: !reference.visible })
 }
 
 function confirmDeleteReference(id: string): void {

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { reactive } from 'vue'
 
 import { createStudioCube } from '@/core/model/modelFactory'
 import { ModelPersistenceService } from '@/core/model/modelPersistenceService'
@@ -35,11 +36,11 @@ describe('ModelPersistenceService', () => {
   })
 
   it('debounces model changes and flushes the latest meaningful state', async () => {
-    const model = await models.createModel({
+    const model = reactive(await models.createModel({
       projectId,
       name: 'Autosaved Geometry',
       identifier: 'geometry.autosave_model.geometry',
-    })
+    }))
     model.elements.push(createStudioCube())
     persistence.schedule(model, {}, 5)
 
