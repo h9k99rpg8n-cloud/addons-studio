@@ -80,6 +80,22 @@ describe('mobile Model Studio viewport architecture', () => {
     expect(studioSource).toContain('removeBackgroundAsset')
   })
 
+  it('keeps Safari file handles alive until reference and background imports finish', () => {
+    const referenceImport = studioSource.slice(
+      studioSource.indexOf('async function importReference'),
+      studioSource.indexOf('function openBackgroundPicker'),
+    )
+    const backgroundImport = studioSource.slice(
+      studioSource.indexOf('async function importBackground'),
+      studioSource.indexOf('async function removeCustomBackground'),
+    )
+
+    expect(referenceImport.indexOf("input.value = ''"))
+      .toBeGreaterThan(referenceImport.indexOf('addReferenceAsset'))
+    expect(backgroundImport.indexOf("input.value = ''"))
+      .toBeGreaterThan(backgroundImport.indexOf('addBackgroundAsset'))
+  })
+
   it('keeps every editable Model Studio control at an iOS-safe effective font size', () => {
     expect(studioSource).toContain("input:not([type='range'])")
     expect(studioSource).toContain('font-size: max(1rem, 16px)')

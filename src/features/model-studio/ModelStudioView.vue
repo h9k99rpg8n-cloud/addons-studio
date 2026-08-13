@@ -880,7 +880,6 @@ function activeReferenceView(): StudioReferenceView {
 async function importReference(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
-  input.value = ''
   if (!file || !model.value) return
   importingReference.value = true
   try {
@@ -901,6 +900,7 @@ async function importReference(event: Event): Promise<void> {
       message: toAppError(error, 'The reference image could not be opened.').userMessage,
     })
   } finally {
+    input.value = ''
     importingReference.value = false
   }
 }
@@ -932,7 +932,6 @@ function updateBackground(settings: StudioEditorBackgroundSettings): void {
 async function importBackground(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
-  input.value = ''
   if (!file || !model.value) return
   importingBackground.value = true
   try {
@@ -953,6 +952,7 @@ async function importBackground(event: Event): Promise<void> {
       message: toAppError(error, 'This editor background image could not be opened.').userMessage,
     })
   } finally {
+    input.value = ''
     importingBackground.value = false
   }
 }
