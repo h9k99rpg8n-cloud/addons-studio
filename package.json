@@ -1,6 +1,6 @@
 {
   "name": "addons-studio",
-  "version": "0.0.3-alpha.6",
+  "version": "0.0.3-alpha.6.1",
   "private": true,
   "description": "A free, open-source, mobile-first studio for Minecraft Bedrock add-ons.",
   "type": "module",

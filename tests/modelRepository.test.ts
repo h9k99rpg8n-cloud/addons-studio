@@ -6,6 +6,12 @@ import { DEFAULT_BEDROCK_VERSION } from '@/core/project/bedrockVersions'
 import { ProjectRepository } from '@/core/project/projectRepository'
 import { AddonsStudioDatabase } from '@/core/storage/database'
 
+const inspectTestImage = async (file: File) => ({
+  mimeType: file.type === 'image/jpeg' ? 'image/jpeg' as const : 'image/png' as const,
+  width: 640,
+  height: 480,
+})
+
 describe('ModelRepository', () => {
   let databaseName: string
   let database: AddonsStudioDatabase
@@ -17,7 +23,7 @@ describe('ModelRepository', () => {
     databaseName = `addons-studio-models-${crypto.randomUUID()}`
     database = new AddonsStudioDatabase(databaseName)
     projects = new ProjectRepository(database)
-    models = new ModelRepository(database)
+    models = new ModelRepository(database, inspectTestImage)
     projectId = (
       await projects.createProject({
         name: 'Model Project',
@@ -46,7 +52,7 @@ describe('ModelRepository', () => {
     database.close()
 
     database = new AddonsStudioDatabase(databaseName)
-    models = new ModelRepository(database)
+    models = new ModelRepository(database, inspectTestImage)
     const reopened = await models.getModel(model.id)
 
     expect(reopened?.elements).toHaveLength(2)
@@ -98,7 +104,12 @@ describe('ModelRepository', () => {
       pivot: { x: 2, y: 3, z: 4 },
       locked: true,
     })
-    expect(reopened?.references[0]?.locked).toBe(true)
+    expect(reopened?.references[0]).toMatchObject({
+      view: 'front',
+      position: { x: 0, y: 0 },
+      scale: 1,
+      opacity: 0.55,
+    })
     expect(reopened?.editor).toMatchObject({
       viewportLayout: 2,
       viewportViews: ['front', 'perspective'],
@@ -151,7 +162,13 @@ describe('ModelRepository', () => {
     expect(reopened?.elements[0]?.pivot).toEqual({ x: 8, y: 8, z: 8 })
     expect(reopened?.elements[0]?.locked).toBe(false)
     expect(reopened?.groups).toEqual([])
-    expect(reopened?.references[0]).toMatchObject({ view: 'right', locked: true })
+    expect(reopened?.references[0]).toMatchObject({
+      view: 'right',
+      position: { x: 0, y: 0 },
+      scale: 2 / 3,
+      opacity: 0.5,
+      visible: true,
+    })
     expect(reopened?.editor.viewportLayout).toBe(1)
     expect(reopened?.editor.modeling).toEqual({
       resizeDirection: 'symmetric',
@@ -175,11 +192,59 @@ describe('ModelRepository', () => {
     const attached = await models.addReferenceAsset(model, file)
     model = attached.model
     expect(model.references).toHaveLength(1)
+    expect(model.references[0]).toMatchObject({
+      view: 'front',
+      opacity: 0.55,
+      visible: true,
+      flipHorizontal: false,
+      flipVertical: false,
+    })
     expect(await models.listReferenceAssets(model.id)).toHaveLength(1)
 
     model = await models.deleteReference(model, attached.reference.id)
     expect(model.references).toEqual([])
     expect(await models.listReferenceAssets(model.id)).toEqual([])
+  })
+
+  it('persists and safely resets a dedicated custom editor background asset', async () => {
+    let model = await models.createModel({
+      projectId,
+      name: 'Background Model',
+      identifier: 'geometry.model_project.background_model',
+    })
+    const attached = await models.addBackgroundAsset(
+      model,
+      new File(['background'], 'studio.jpg', { type: 'image/jpeg' }),
+    )
+    model = attached.model
+    model.editor.background = {
+      ...model.editor.background,
+      fit: 'fit',
+      opacity: 0.65,
+      brightness: 0.8,
+    }
+    await models.saveModel(model)
+    database.close()
+
+    database = new AddonsStudioDatabase(databaseName)
+    models = new ModelRepository(database, inspectTestImage)
+    const reopened = await models.getModel(model.id)
+    const assets = await models.listEditorAssets(model.id)
+
+    expect(reopened?.editor.background).toMatchObject({
+      type: 'custom',
+      customAssetId: attached.asset.id,
+      fit: 'fit',
+      opacity: 0.65,
+      brightness: 0.8,
+    })
+    expect(assets).toHaveLength(1)
+    expect(assets[0]).toMatchObject({ kind: 'background', width: 640, height: 480 })
+
+    const reset = await models.removeBackgroundAsset(reopened!)
+    expect(reset.editor.background).toMatchObject({ type: 'dark-studio' })
+    expect(reset.editor.background.customAssetId).toBeUndefined()
+    expect(await models.listEditorAssets(model.id)).toEqual([])
   })
 
   it('cascades model and reference deletion with its project', async () => {
@@ -197,5 +262,28 @@ describe('ModelRepository', () => {
 
     expect(await models.getModel(model.id)).toBeUndefined()
     expect(await models.listReferenceAssets(attached.model.id)).toEqual([])
+    expect(await database.modelEditorAssets.where('projectId').equals(projectId).count()).toBe(0)
+  })
+
+  it('cleans reference and background blobs when a model is deleted', async () => {
+    let model = await models.createModel({
+      projectId,
+      name: 'Disposable Assets',
+      identifier: 'geometry.model_project.disposable_assets',
+    })
+    model = (await models.addReferenceAsset(
+      model,
+      new File(['reference'], 'front.png', { type: 'image/png' }),
+    )).model
+    model = (await models.addBackgroundAsset(
+      model,
+      new File(['background'], 'background.jpg', { type: 'image/jpeg' }),
+    )).model
+    expect(await models.listEditorAssets(model.id)).toHaveLength(2)
+
+    await models.deleteModel(model.id)
+
+    expect(await models.getModel(model.id)).toBeUndefined()
+    expect(await models.listEditorAssets(model.id)).toEqual([])
   })
 })

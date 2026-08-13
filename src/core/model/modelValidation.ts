@@ -104,6 +104,29 @@ export function validateStoredModel(model: StudioModel): ModelValidationIssue[] 
       break
     }
   }
+  const referenceIds = new Set<string>()
+  for (const reference of model.references) {
+    if (referenceIds.has(reference.id)) {
+      issues.push({ field: 'name', message: 'Reference IDs must be unique.' })
+      break
+    }
+    referenceIds.add(reference.id)
+    if (
+      !reference.assetId
+      || !['front', 'back', 'left', 'right', 'top', 'bottom'].includes(reference.view)
+      || !Number.isFinite(reference.position.x)
+      || !Number.isFinite(reference.position.y)
+      || !Number.isFinite(reference.scale)
+      || reference.scale <= 0
+      || !Number.isFinite(reference.rotation)
+      || !Number.isFinite(reference.opacity)
+      || reference.opacity <= 0
+      || reference.opacity > 1
+    ) {
+      issues.push({ field: 'name', message: 'Reference guide settings are invalid.' })
+      break
+    }
+  }
   return issues
 }
 

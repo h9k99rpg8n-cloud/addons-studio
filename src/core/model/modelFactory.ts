@@ -6,11 +6,12 @@ import type {
   StudioMetadataValue,
   StudioModel,
   StudioReferenceImage,
+  StudioVector2,
   StudioVector3,
 } from '@/types/model'
 import { createId } from '@/utils/createId'
 
-export const MODEL_SCHEMA_VERSION = 3
+export const MODEL_SCHEMA_VERSION = 4
 
 export const DEFAULT_VIEWPORT_VIEWS: readonly StudioCameraView[] = ['perspective', 'front']
 
@@ -27,6 +28,12 @@ export function createDefaultEditorState(): StudioEditorState {
       transformSpace: 'global',
       language: 'en',
     },
+    background: {
+      type: 'dark-studio',
+      fit: 'fill',
+      opacity: 1,
+      brightness: 1,
+    },
     viewportLayout: 1,
     viewportViews: [...DEFAULT_VIEWPORT_VIEWS],
   }
@@ -41,6 +48,13 @@ function cloneVector(vector: Partial<StudioVector3> | undefined, fallback: Studi
     x: finite(vector?.x, fallback.x),
     y: finite(vector?.y, fallback.y),
     z: finite(vector?.z, fallback.z),
+  }
+}
+
+function cloneVector2(vector: Partial<StudioVector2> | undefined, fallback: StudioVector2): StudioVector2 {
+  return {
+    x: finite(vector?.x, fallback.x),
+    y: finite(vector?.y, fallback.y),
   }
 }
 
@@ -159,8 +173,19 @@ export function cloneStudioGroup(group: StudioGroup): StudioGroup {
 }
 
 export function cloneStudioReference(reference: StudioReferenceImage): StudioReferenceImage {
+  const legacy = reference as unknown as StudioReferenceImage & {
+    position?: Partial<StudioVector3>
+    size?: Partial<StudioVector2>
+    scale?: number
+    rotation?: number
+    flipHorizontal?: boolean
+    flipVertical?: boolean
+  }
   const storedView = reference.view as string
   const view = storedView === 'side' ? 'right' : storedView
+  const legacyScale = legacy.size
+    ? Math.max(finite(legacy.size.x, 24), finite(legacy.size.y, 24)) / 24
+    : 1
   return {
     id: reference.id,
     assetId: reference.assetId,
@@ -168,14 +193,13 @@ export function cloneStudioReference(reference: StudioReferenceImage): StudioRef
     view: (
       ['front', 'back', 'left', 'right', 'top', 'bottom'].includes(view) ? view : 'front'
     ) as StudioReferenceImage['view'],
-    position: cloneVector(reference.position, { x: 0, y: 0, z: -8.25 }),
-    size: {
-      x: finite(reference.size?.x, 24),
-      y: finite(reference.size?.y, 24),
-    },
-    opacity: finite(reference.opacity, 0.55),
+    position: cloneVector2(legacy.position, { x: 0, y: 0 }),
+    scale: Math.min(20, Math.max(0.05, finite(legacy.scale, legacyScale))),
+    rotation: finite(legacy.rotation, 0),
+    opacity: Math.min(1, Math.max(0.05, finite(reference.opacity, 0.55))),
     visible: reference.visible !== false,
-    locked: reference.locked !== false,
+    flipHorizontal: legacy.flipHorizontal === true,
+    flipVertical: legacy.flipVertical === true,
   }
 }
 
@@ -188,6 +212,8 @@ function cloneEditorState(editor: StudioEditorState | undefined): StudioEditorSt
   const controlMode = editor?.modeling?.controlMode
   const transformSpace = editor?.modeling?.transformSpace
   const language = editor?.modeling?.language
+  const backgroundType = editor?.background?.type
+  const backgroundFit = editor?.background?.fit
   return {
     snapping: {
       transform: transform === null
@@ -213,6 +239,17 @@ function cloneEditorState(editor: StudioEditorState | undefined): StudioEditorSt
         ? transformSpace!
         : defaults.modeling.transformSpace,
       language: language === 'es' ? 'es' : defaults.modeling.language,
+    },
+    background: {
+      type: ['dark-studio', 'sky', 'night', 'sunset', 'snow', 'custom'].includes(backgroundType ?? '')
+        ? backgroundType!
+        : defaults.background.type,
+      customAssetId: editor?.background?.customAssetId,
+      fit: ['fit', 'fill', 'stretch'].includes(backgroundFit ?? '')
+        ? backgroundFit!
+        : defaults.background.fit,
+      opacity: Math.min(1, Math.max(0.1, finite(editor?.background?.opacity, defaults.background.opacity))),
+      brightness: Math.min(1.5, Math.max(0.25, finite(editor?.background?.brightness, defaults.background.brightness))),
     },
     viewportLayout: editor?.viewportLayout === 2 ? 2 : 1,
     viewportViews: views.length ? [...views.slice(0, 2)] : [...defaults.viewportViews],

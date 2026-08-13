@@ -99,7 +99,7 @@ function importPlaceholder(): void {
         <span class="action-card__icon"><AppIcon name="upload" :size="24" /></span>
         <span>
           <strong>Import Project <AppBadge>Coming soon</AppBadge></strong>
-          <small>Import is not implemented in Alpha 0.0.3.6</small>
+          <small>Import is not implemented in Alpha 0.0.3.6.1</small>
         </span>
         <AppIcon name="info" :size="19" />
       </button>

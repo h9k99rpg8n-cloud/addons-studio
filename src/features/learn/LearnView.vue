@@ -13,7 +13,7 @@ import StudioIcon from '@/components/common/StudioIcon.vue'
       <AppBadge tone="accent">Coming soon</AppBadge>
       <h2>Mobile-friendly creator guides</h2>
       <p>
-        Learn is reserved for guided Bedrock lessons. No fake tutorials or unfinished editors are included in Alpha 0.0.3.6.
+        Learn is reserved for guided Bedrock lessons. No fake tutorials or unfinished editors are included in Alpha 0.0.3.6.1.
       </p>
       <ul>
         <li><StudioIcon name="block" :size="19" />Contextual object workflows</li>

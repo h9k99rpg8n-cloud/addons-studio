@@ -2,11 +2,11 @@
 
 Addons Studio is a free and open-source, mobile-first web application for creating Minecraft Bedrock Edition add-ons. The long-term goal is a complete creative environment that works directly from a phone, tablet, or desktop browser without assuming a mouse or desktop filesystem.
 
-> **Current release:** Alpha `0.0.3.6` · Model Core Productivity & Touch Update
+> **Current release:** Alpha `0.0.3.6.1` · References 2.0 & Stability Update
 
 Addons Studio is an independent community project and is not affiliated with Mojang Studios or Microsoft. Minecraft is a trademark of Microsoft Corporation.
 
-## What works in Alpha 0.0.3.6
+## What works in Alpha 0.0.3.6.1
 
 - First-launch welcome experience
 - Local project creation with validated namespaces
@@ -40,16 +40,18 @@ Addons Studio is an independent community project and is not affiliated with Moj
 - One-level model groups with safe hierarchy organization, whole-group transforms, visibility, duplication, and deletion that moves children to root
 - Animation-ready cube/group pivots with direct XYZ editing, Center, Reset, and Pivot to Origin actions
 - Mobile outliner with expandable groups, selection checkboxes, explicit hidden/locked status, touch action menus, and safe access to locked objects
-- Locked-by-default PNG/JPG reference planes with position, size, opacity, six orientations, visibility, and safe local storage
+- References 2.0 with multiple PNG/JPG viewport guides assigned independently to Front, Back, Left, Right, Top, or Bottom; guides support 2D position, scale, opacity, visibility, flips, and optional rotation without entering Three.js raycasting or model bounds
+- Procedural Dark Studio, Sky, Night, Sunset, and Snow editor environments plus persistent custom PNG/JPG backgrounds with Fit, Fill, Stretch, opacity, and brightness controls
+- Dedicated binary editor-asset storage, safe legacy reference migration, shared per-session object URLs across split viewports, and deterministic cleanup when references, models, or projects are deleted
 - Command-based hierarchy undo/redo plus debounced model autosave and explicit save status
 
-This release does **not** generate `.mcaddon` or `.mcpack` files. Model Studio remains an internal-format editor, not a complete Bedrock geometry exporter; bones, UV mapping, materials, texture painting, animation, particles, audio, code, and visual logic remain unimplemented and are not simulated. Multi-selection currently exposes shared gizmo Move rather than unsafe multi-object Rotate/Resize handles, Tactilismos remain experimental, and three/four viewport layouts stay deferred until mobile performance is validated.
+This release does **not** generate `.mcaddon` or `.mcpack` files. Model Studio remains an internal-format editor, not a complete Bedrock geometry exporter; bones, UV mapping, materials, texture painting, animation, particles, audio, code, and visual logic remain unimplemented and are not simulated. Multi-selection currently exposes shared gizmo Move rather than unsafe multi-object Rotate/Resize handles, direct Rotate Tactilismo remains experimental, and three/four viewport layouts stay deferred until mobile performance is validated. References are axial 2D guides and are intentionally hidden in Perspective and Isometric views.
 
 ## Mobile-first principles
 
 The primary targets are iPhone/Safari, Android/Chrome, iPad, Android tablets, and installed mobile PWAs. The interface uses bottom navigation, full-screen flows, bottom sheets, large touch targets, dynamic viewport units, and all four `safe-area-inset-*` values. Desktop support is useful but secondary.
 
-The product architecture deliberately avoids desktop-only filesystem assumptions. Project metadata, folders, internal models, and separate reference-image blobs are stored in IndexedDB because the File System Access API is not consistently available on mobile Safari.
+The product architecture deliberately avoids desktop-only filesystem assumptions. Project metadata, folders, internal models, and separate editor-image blobs are stored in IndexedDB because the File System Access API is not consistently available on mobile Safari. Runtime object URLs are recreated when Model Studio opens and revoked when their assets leave the session; they are never treated as persistent identifiers.
 
 ## Technology
 

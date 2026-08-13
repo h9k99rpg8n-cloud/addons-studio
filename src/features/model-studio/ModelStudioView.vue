@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
 
 import AppButton from '@/components/common/AppButton.vue'
@@ -58,33 +58,41 @@ import {
   type StudioAlignment,
 } from '@/core/model/modelProductivity'
 import { modelPersistenceService } from '@/core/model/modelPersistenceService'
+import { ModelEditorAssetRuntime } from '@/core/model/modelEditorAssetRuntime'
 import { modelRepository } from '@/core/model/modelRepository'
 import { useToastStore } from '@/stores/toasts'
 import type {
-  ModelReferenceAsset,
+  ModelEditorAsset,
   ModelTransformTool,
   StudioCameraView,
+  StudioEditorBackgroundSettings,
+  StudioEditorBackgroundType,
   StudioGroup,
   StudioModel,
   StudioModelingSettings,
   StudioModelNode,
   StudioReferenceImage,
+  StudioReferenceView,
   StudioVector3,
 } from '@/types/model'
 import type { StudioAxis } from '@/core/model/modelHierarchy'
 
 import ModelOutlinerSheet from './components/ModelOutlinerSheet.vue'
+import BackgroundSettingsSheet from './components/BackgroundSettingsSheet.vue'
 import ModelSettingsSheet from './components/ModelSettingsSheet.vue'
 import ModelViewport from './components/ModelViewport.vue'
 import PivotPropertiesSheet from './components/PivotPropertiesSheet.vue'
 import ReferencePropertiesSheet from './components/ReferencePropertiesSheet.vue'
+import ReferencesManagerSheet from './components/ReferencesManagerSheet.vue'
 import TransformPropertiesSheet from './components/TransformPropertiesSheet.vue'
 
 const props = defineProps<{ projectId: string; modelId: string }>()
 const router = useRouter()
 const toasts = useToastStore()
 const model = ref<StudioModel>()
-const assets = ref<ModelReferenceAsset[]>([])
+const assets = shallowRef<ModelEditorAsset[]>([])
+const assetUrls = ref<Record<string, string>>({})
+const assetRuntime = new ModelEditorAssetRuntime()
 const loading = ref(true)
 const loadError = ref('')
 const tool = ref<ModelTransformTool>('select')
@@ -97,6 +105,8 @@ const selectedReferenceId = ref<string>()
 const propertiesOpen = ref(false)
 const pivotPropertiesOpen = ref(false)
 const referencePropertiesOpen = ref(false)
+const referencesOpen = ref(false)
+const backgroundOpen = ref(false)
 const outlinerOpen = ref(false)
 const moreOpen = ref(false)
 const viewsOpen = ref(false)
@@ -118,7 +128,9 @@ const deleteGroupTarget = ref<StudioGroup>()
 const deleteReferenceOpen = ref(false)
 const deleteReferenceTarget = ref<StudioReferenceImage>()
 const referenceInput = ref<HTMLInputElement>()
+const backgroundInput = ref<HTMLInputElement>()
 const importingReference = ref(false)
+const importingBackground = ref(false)
 const saveStatus = ref<'saved' | 'saving' | 'error'>('saved')
 const historyVersion = ref(0)
 const history = new ModelCommandHistory()
@@ -128,6 +140,7 @@ let numericSession: StudioNodeTransformSession | undefined
 let pivotSession: StudioNodeTransformSession | undefined
 let saveSequence = 0
 const duplicateMemory = ref<{ ids: string[]; offset?: StudioVector3 }>()
+const reportedImageErrors = new Set<string>()
 
 const selectedNode = computed(() => model.value ? getStudioNode(model.value, selectedNodeId.value) : undefined)
 const selectedNodes = computed(() => model.value
@@ -167,6 +180,9 @@ const isolationActive = computed(() => isolatedIds.value.length > 0)
 const selectedReference = computed(() =>
   model.value?.references.find((reference) => reference.id === selectedReferenceId.value),
 )
+const customBackgroundAsset = computed(() => assets.value.find((asset) =>
+  asset.id === model.value?.editor.background.customAssetId && asset.kind === 'background',
+))
 const canUndo = computed(() => {
   void historyVersion.value
   return history.canUndo
@@ -202,11 +218,43 @@ const cameraViews: readonly { id: StudioCameraView; label: string }[] = [
   { id: 'bottom', label: 'Bottom' },
 ]
 
+function reportImageError(key: string, message: string): void {
+  if (reportedImageErrors.has(key)) return
+  reportedImageErrors.add(key)
+  toasts.push({ type: 'error', message })
+}
+
+function handleViewportError(message: string): void {
+  reportImageError(`viewport:${message}`, message)
+}
+
+function refreshAssetUrls(): void {
+  const runtime = assetRuntime.sync(assets.value)
+  assetUrls.value = runtime.urls
+  for (const id of runtime.failedIds) {
+    reportImageError(id, 'Addons Studio could not restore this editor image from local storage.')
+  }
+}
+
+function auditStoredAssets(): void {
+  if (!model.value) return
+  const available = new Set(assets.value.map((asset) => asset.id))
+  for (const reference of model.value.references) {
+    if (!available.has(reference.assetId)) {
+      reportImageError(reference.assetId, 'Addons Studio could not restore this reference image from local storage.')
+    }
+  }
+  const backgroundId = model.value.editor.background.customAssetId
+  if (backgroundId && !available.has(backgroundId)) {
+    reportImageError(backgroundId, 'Addons Studio could not restore the custom editor background from local storage.')
+  }
+}
+
 onMounted(async () => {
   try {
     const [storedModel, storedAssets] = await Promise.all([
       modelRepository.getModel(props.modelId),
-      modelRepository.listReferenceAssets(props.modelId),
+      modelRepository.listEditorAssets(props.modelId),
     ])
     if (!storedModel || storedModel.projectId !== props.projectId) {
       loadError.value = 'This model is no longer available in the project.'
@@ -214,6 +262,8 @@ onMounted(async () => {
     }
     model.value = storedModel
     assets.value = storedAssets
+    refreshAssetUrls()
+    auditStoredAssets()
   } catch (error) {
     loadError.value = toAppError(error, 'Addons Studio could not open this model.').userMessage
   } finally {
@@ -225,6 +275,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   globalThis.removeEventListener('pagehide', flushOnHide)
   void modelPersistenceService.flush(props.modelId)
+  assetRuntime.dispose()
 })
 
 function flushOnHide(): void {
@@ -753,6 +804,7 @@ function setMultiSelect(enabled: boolean): void {
 function editReference(id: string): void {
   selectReference(id)
   outlinerOpen.value = false
+  referencesOpen.value = false
   referencePropertiesOpen.value = true
 }
 
@@ -786,18 +838,6 @@ function toggleReference(id: string): void {
   scheduleSave()
 }
 
-function toggleReferenceLock(id: string): void {
-  if (!model.value) return
-  const reference = model.value.references.find((entry) => entry.id === id)
-  if (!reference) return
-  const before = cloneStudioReference(reference)
-  const after = cloneStudioReference(reference)
-  after.locked = !after.locked
-  history.execute(updateReferenceCommand(before, after, after.locked ? 'Lock reference' : 'Unlock reference'), model.value)
-  bumpHistory()
-  scheduleSave()
-}
-
 function confirmDeleteReference(id: string): void {
   const reference = model.value?.references.find((entry) => entry.id === id)
   if (!reference) return
@@ -813,6 +853,7 @@ async function deleteReference(): Promise<void> {
     await modelPersistenceService.flush(model.value.id)
     model.value = await modelRepository.deleteReference(model.value, reference.id)
     assets.value = assets.value.filter((asset) => asset.id !== reference.assetId)
+    refreshAssetUrls()
     if (selectedReferenceId.value === reference.id) selectedReferenceId.value = undefined
     deleteReferenceOpen.value = false
     saveStatus.value = 'saved'
@@ -829,20 +870,11 @@ function openReferencePicker(): void {
   referenceInput.value?.click()
 }
 
-function decodeImage(file: File): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file)
-    const image = new Image()
-    image.onload = () => {
-      URL.revokeObjectURL(url)
-      resolve()
-    }
-    image.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('Image decode failed'))
-    }
-    image.src = url
-  })
+function activeReferenceView(): StudioReferenceView {
+  const view = model.value?.editor.viewportViews[activeViewport.value]
+  return ['front', 'back', 'left', 'right', 'top', 'bottom'].includes(view ?? '')
+    ? view as StudioReferenceView
+    : 'front'
 }
 
 async function importReference(event: Event): Promise<void> {
@@ -852,13 +884,14 @@ async function importReference(event: Event): Promise<void> {
   if (!file || !model.value) return
   importingReference.value = true
   try {
-    await decodeImage(file)
     await modelPersistenceService.flush(model.value.id)
-    const result = await modelRepository.addReferenceAsset(model.value, file)
+    const result = await modelRepository.addReferenceAsset(model.value, file, activeReferenceView())
     model.value = result.model
-    assets.value.push(result.asset)
+    assets.value = [...assets.value, result.asset]
+    refreshAssetUrls()
     selectedReferenceId.value = result.reference.id
     selectedNodeId.value = undefined
+    referencesOpen.value = false
     referencePropertiesOpen.value = true
     saveStatus.value = 'saved'
     toasts.push({ type: 'success', message: 'Reference image added' })
@@ -869,6 +902,76 @@ async function importReference(event: Event): Promise<void> {
     })
   } finally {
     importingReference.value = false
+  }
+}
+
+function openBackgroundPicker(): void {
+  backgroundInput.value?.click()
+}
+
+function selectBackground(type: StudioEditorBackgroundType): void {
+  if (!model.value) return
+  if (type === 'custom' && !customBackgroundAsset.value) {
+    openBackgroundPicker()
+    return
+  }
+  model.value.editor.background = { ...model.value.editor.background, type }
+  scheduleSave()
+}
+
+function updateBackground(settings: StudioEditorBackgroundSettings): void {
+  if (!model.value) return
+  model.value.editor.background = {
+    ...settings,
+    opacity: Math.min(1, Math.max(0.1, Number(settings.opacity) || 0.1)),
+    brightness: Math.min(1.5, Math.max(0.25, Number(settings.brightness) || 0.25)),
+  }
+  scheduleSave()
+}
+
+async function importBackground(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !model.value) return
+  importingBackground.value = true
+  try {
+    await modelPersistenceService.flush(model.value.id)
+    const previousId = model.value.editor.background.customAssetId
+    const result = await modelRepository.addBackgroundAsset(model.value, file)
+    model.value = result.model
+    assets.value = [
+      ...assets.value.filter((asset) => asset.id !== previousId),
+      result.asset,
+    ]
+    refreshAssetUrls()
+    saveStatus.value = 'saved'
+    toasts.push({ type: 'success', message: 'Custom editor background added' })
+  } catch (error) {
+    toasts.push({
+      type: 'error',
+      message: toAppError(error, 'This editor background image could not be opened.').userMessage,
+    })
+  } finally {
+    importingBackground.value = false
+  }
+}
+
+async function removeCustomBackground(): Promise<void> {
+  if (!model.value) return
+  const assetId = model.value.editor.background.customAssetId
+  try {
+    await modelPersistenceService.flush(model.value.id)
+    model.value = await modelRepository.removeBackgroundAsset(model.value)
+    assets.value = assets.value.filter((asset) => asset.id !== assetId)
+    refreshAssetUrls()
+    saveStatus.value = 'saved'
+    toasts.push({ type: 'info', message: 'Editor background reset to Dark Studio' })
+  } catch (error) {
+    toasts.push({
+      type: 'error',
+      message: toAppError(error, 'The custom editor background could not be removed.').userMessage,
+    })
   }
 }
 
@@ -918,7 +1021,8 @@ function showOutliner(): void {
           :key="index"
           class="studio-viewport"
           :model="model"
-          :assets="assets"
+          :asset-urls="assetUrls"
+          :background="model.editor.background"
           :selected-node-id="selectedNodeId"
           :selected-node-ids="selectedNodeIds"
           :selected-reference-id="selectedReferenceId"
@@ -941,7 +1045,7 @@ function showOutliner(): void {
           @select-reference="selectReference"
           @preview-hierarchy="previewHierarchy"
           @commit-hierarchy="commitHierarchy"
-          @error="(message) => toasts.push({ type: 'error', message })"
+          @error="handleViewportError"
         />
       </section>
 
@@ -985,10 +1089,10 @@ function showOutliner(): void {
           <button
             type="button"
             :disabled="importingReference"
-            @click="openReferencePicker"
+            @click="referencesOpen = true"
           >
             <AppIcon name="image-plus" :size="21" />
-            <span>Reference</span>
+            <span>References</span>
           </button>
           <button
             v-if="selectionCount === 1 && selectedNode && selectionTransformable"
@@ -1017,8 +1121,15 @@ function showOutliner(): void {
         ref="referenceInput"
         class="visually-hidden"
         type="file"
-        accept="image/png,image/jpeg"
+        accept="image/png,image/jpeg,.png,.jpg,.jpeg"
         @change="importReference"
+      />
+      <input
+        ref="backgroundInput"
+        class="visually-hidden"
+        type="file"
+        accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+        @change="importBackground"
       />
 
       <TransformPropertiesSheet
@@ -1050,8 +1161,29 @@ function showOutliner(): void {
         @close="referencePropertiesOpen = false"
         @update="updateReference"
         @commit="commitReference"
-        @toggle-lock="toggleReferenceLock"
         @delete="confirmDeleteReference"
+      />
+      <ReferencesManagerSheet
+        :open="referencesOpen"
+        :references="model.references"
+        :asset-urls="assetUrls"
+        :importing="importingReference"
+        @close="referencesOpen = false"
+        @add="openReferencePicker"
+        @edit="editReference"
+        @toggle="toggleReference"
+        @delete="confirmDeleteReference"
+      />
+      <BackgroundSettingsSheet
+        :open="backgroundOpen"
+        :background="model.editor.background"
+        :has-custom-image="Boolean(customBackgroundAsset)"
+        :importing="importingBackground"
+        @close="backgroundOpen = false"
+        @select="selectBackground"
+        @import="openBackgroundPicker"
+        @remove-custom="removeCustomBackground"
+        @update="updateBackground"
       />
       <ModelOutlinerSheet
         :open="outlinerOpen"
@@ -1077,7 +1209,6 @@ function showOutliner(): void {
         @delete-group="confirmDeleteGroup"
         @edit-reference="editReference"
         @toggle-reference="toggleReference"
-        @toggle-reference-lock="toggleReferenceLock"
         @delete-reference="confirmDeleteReference"
       />
 
@@ -1278,6 +1409,14 @@ function showOutliner(): void {
           <button type="button" @click="showOutliner">
             <span><AppIcon name="list-tree" :size="22" /></span>
             <span><strong>Outliner</strong><small>Select, organize, lock, isolate, and edit objects</small></span>
+          </button>
+          <button type="button" @click="moreOpen = false; referencesOpen = true">
+            <span><AppIcon name="image-plus" :size="22" /></span>
+            <span><strong>References</strong><small>Viewport guides for accurate geometry</small></span>
+          </button>
+          <button type="button" @click="moreOpen = false; backgroundOpen = true">
+            <span><AppIcon name="palette" :size="22" /></span>
+            <span><strong>Editor Background</strong><small>Choose the scene atmosphere or a custom image</small></span>
           </button>
           <button type="button" @click="moreOpen = false; settingsOpen = true">
             <span><AppIcon name="settings" :size="22" /></span>

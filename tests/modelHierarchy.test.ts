@@ -11,6 +11,7 @@ import {
   duplicateStudioGroup,
   elementCenter,
   sanitizeGestureDelta,
+  isPointerStepContinuous,
   snapValue,
 } from '@/core/model/modelHierarchy'
 import type { StudioAxis } from '@/core/model/modelHierarchy'
@@ -142,17 +143,19 @@ describe('Model Studio hierarchy and transforms', () => {
     expect(after.defaultPivot).toEqual(before.defaultPivot)
   })
 
-  it('supports positive-side resize while keeping the negative side fixed', () => {
-    const { before, after } = resizeCube('x', 'positive', 20)
-    expect(after.position.x).toBe(before.position.x)
-    expect(after.position.x + after.size.x).toBe(before.position.x + 20)
+  it.each(['x', 'y', 'z'] as const)('supports positive-side %s resize while keeping the negative side fixed', (axis) => {
+    const nextSize = initialSize(axis) + 4
+    const { before, after } = resizeCube(axis, 'positive', nextSize)
+    expect(after.position[axis]).toBe(before.position[axis])
+    expect(after.position[axis] + after.size[axis]).toBe(before.position[axis] + nextSize)
     expect(after.pivot).toEqual(before.pivot)
   })
 
-  it('supports negative-side resize while keeping the positive side fixed', () => {
-    const { before, after } = resizeCube('x', 'negative', 20)
-    expect(after.position.x + after.size.x).toBe(before.position.x + before.size.x)
-    expect(after.position.x).toBe(before.position.x - 4)
+  it.each(['x', 'y', 'z'] as const)('supports negative-side %s resize while keeping the positive side fixed', (axis) => {
+    const nextSize = initialSize(axis) + 4
+    const { before, after } = resizeCube(axis, 'negative', nextSize)
+    expect(after.position[axis] + after.size[axis]).toBe(before.position[axis] + before.size[axis])
+    expect(after.position[axis]).toBe(before.position[axis] - 4)
     expect(after.pivot).toEqual(before.pivot)
   })
 
@@ -186,6 +189,24 @@ describe('Model Studio hierarchy and transforms', () => {
     expect(sanitizeGestureDelta(8, 'scale', 16, 80)).toBe(8)
     expect(sanitizeGestureDelta(50_000, 'scale', 16, 80)).toBe(80)
     expect(sanitizeGestureDelta(-50_000, 'scale', 16, 80)).toBe(-80)
+  })
+
+  it('rejects discontinuous Safari pointer-coordinate spikes without limiting continuous drags', () => {
+    expect(isPointerStepContinuous(
+      { x: 100, y: 100, time: 10 },
+      { x: 145, y: 128, time: 26 },
+      800,
+    )).toBe(true)
+    expect(isPointerStepContinuous(
+      { x: 145, y: 128, time: 26 },
+      { x: 2_500, y: -1_800, time: 42 },
+      800,
+    )).toBe(false)
+    expect(isPointerStepContinuous(
+      { x: 100, y: 100, time: 10 },
+      { x: 430, y: 100, time: 260 },
+      800,
+    )).toBe(true)
   })
 
   it('provides Global, Local, and Parent transform-space axes', () => {

@@ -10,6 +10,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Scope to be selected for the next development prompt; no future editor is implied as complete.
 
+## [0.0.3.6.1] - 2026-08-13
+
+### Added
+
+- References 2.0: multiple viewport-aligned PNG/JPG guides assigned to Front, Back, Left, Right, Top, or Bottom, with 2D position, scale, opacity, visibility, horizontal/vertical flip, rename, and optional rotation controls.
+- Compact touch-first References manager and a separate Editor Background selector inside Model Studio.
+- Original lightweight Dark Studio, Sky, Night, Sunset, and Snow procedural environments plus persistent custom PNG/JPG backgrounds with Fit, Fill, Stretch, opacity, and brightness options.
+- Dedicated `modelEditorAssets` IndexedDB storage for reference/background blobs, image dimensions, and asset kind, with one shared runtime object URL per open editor session.
+- Tests for reference view resolution, legacy asset migration, Blob persistence, project/model cleanup, custom background persistence/reset, shared runtime URLs, Safari decode errors, image limits, and pointer discontinuities.
+
+### Changed
+
+- Replaced selectable Three.js reference planes with non-interactive DOM guide layers behind the transparent WebGL canvas. References no longer affect raycasting, hierarchy, pivots, or model bounds, and split viewports resolve their assigned guides independently.
+- Upgraded database schema to version 3 and internal model schema to version 4. Alpha 0.0.3–0.0.3.6 reference blobs and metadata migrate without resetting IndexedDB; legacy Side references map safely to Right and 3D offsets/sizes become approximate 2D guide values.
+- Hardened Move/Resize/Rotate gesture continuity against isolated Safari pointer-coordinate spikes while retaining the existing contextual world-delta safeguards.
+- Tactilismos now wait through a deliberate hold before capturing the pointer; a second finger or navigation drag cancels the pending direct transform so orbit, pinch zoom, and two-finger pan retain priority.
+- All Model Studio text, numeric, select, and textarea controls retain an effective 16 CSS-pixel font size to prevent unwanted iOS focus zoom without disabling browser zoom.
+
+### Preserved
+
+- Alpha 0.0.3.6 model transforms, resize directions, transform spaces, custom touch gizmos, Tactilismos, multi-selection, groups, pivots, productivity commands, locks, isolation, undo/redo, autosave, snapping, camera views, one/two viewports, maximize, green grid, and project migrations.
+
 ## [0.0.3.6] - 2026-08-12
 
 ### Added
@@ -127,7 +149,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - GitHub Actions workflows for CI and GitHub Pages.
 - Project, contribution, security, architecture, license, and third-party documentation.
 
-[Unreleased]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6...HEAD
+[Unreleased]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6.1...HEAD
+[0.0.3.6.1]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6...v0.0.3.6.1
 [0.0.3.6]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.5...v0.0.3.6
 [0.0.3.5]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3...v0.0.3.5
 [0.0.3]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.2...v0.0.3

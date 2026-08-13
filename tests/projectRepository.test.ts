@@ -7,6 +7,12 @@ import { ProjectRepository } from '@/core/project/projectRepository'
 import { AddonsStudioDatabase } from '@/core/storage/database'
 import type { CreateProjectInput } from '@/types/project'
 
+const inspectTestImage = async (file: File) => ({
+  mimeType: file.type === 'image/jpeg' ? 'image/jpeg' as const : 'image/png' as const,
+  width: 640,
+  height: 480,
+})
+
 function input(overrides: Partial<CreateProjectInput> = {}): CreateProjectInput {
   return {
     name: 'Río Grande Urbanismo',
@@ -70,7 +76,7 @@ describe('ProjectRepository', () => {
 
   it('duplicates models and reference assets as independent project data', async () => {
     const source = await repository.createProject(input())
-    const models = new ModelRepository(database)
+    const models = new ModelRepository(database, inspectTestImage)
     let model = await models.createModel({
       projectId: source.id,
       name: 'Urban Block',
@@ -90,10 +96,16 @@ describe('ProjectRepository', () => {
         new File(['reference'], 'front.png', { type: 'image/png' }),
       )
     ).model
+    model = (
+      await models.addBackgroundAsset(
+        model,
+        new File(['background'], 'studio.jpg', { type: 'image/jpeg' }),
+      )
+    ).model
 
     const duplicate = await repository.duplicateProject(source.id)
     const copiedModels = await models.listModels(duplicate.id)
-    const copiedAssets = await models.listReferenceAssets(copiedModels[0]!.id)
+    const copiedAssets = await models.listEditorAssets(copiedModels[0]!.id)
 
     expect(copiedModels).toHaveLength(1)
     expect(copiedModels[0]).toMatchObject({
@@ -106,9 +118,13 @@ describe('ProjectRepository', () => {
     expect(copiedModels[0]?.elements[0]?.parentId).toBe(copiedModels[0]?.groups[0]?.id)
     expect(copiedModels[0]?.elements[0]?.metadata).toEqual(cube.metadata)
     expect(copiedModels[0]?.groups[0]?.metadata).toEqual(group.metadata)
-    expect(copiedAssets).toHaveLength(1)
-    expect(copiedAssets[0]?.projectId).toBe(duplicate.id)
-    expect(copiedModels[0]?.references[0]?.assetId).toBe(copiedAssets[0]?.id)
+    expect(copiedAssets).toHaveLength(2)
+    expect(copiedAssets.every((asset) => asset.projectId === duplicate.id)).toBe(true)
+    const copiedReference = copiedAssets.find((asset) => asset.kind === 'reference')
+    const copiedBackground = copiedAssets.find((asset) => asset.kind === 'background')
+    expect(copiedModels[0]?.references[0]?.assetId).toBe(copiedReference?.id)
+    expect(copiedModels[0]?.editor.background.customAssetId).toBe(copiedBackground?.id)
+    expect(copiedModels[0]?.editor.background.type).toBe('custom')
   })
 
   it('updates project metadata without changing its identity', async () => {

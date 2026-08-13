@@ -492,6 +492,26 @@ export function sanitizeGestureDelta(
   return Math.max(-limit, Math.min(limit, delta))
 }
 
+/**
+ * Rejects discontinuous browser pointer coordinates before they can enter the
+ * world-space transform pipeline. Safari can occasionally report a single
+ * coordinate jump after a view/zoom change; ordinary fast drags remain valid.
+ */
+export function isPointerStepContinuous(
+  previous: { x: number; y: number; time: number },
+  next: { x: number; y: number; time: number },
+  viewportDiagonal: number,
+): boolean {
+  const values = [previous.x, previous.y, previous.time, next.x, next.y, next.time, viewportDiagonal]
+  if (!values.every(Number.isFinite)) return false
+  const diagonal = Math.max(1, viewportDiagonal)
+  const elapsed = Math.max(0, next.time - previous.time)
+  const distance = Math.hypot(next.x - previous.x, next.y - previous.y)
+  const ordinaryFastDrag = Math.max(96, diagonal * 0.35)
+  const delayedEventAllowance = Math.min(diagonal * 0.5, elapsed * 1.5)
+  return distance <= ordinaryFastDrag + delayedEventAllowance
+}
+
 export function requestedAxisTransform(
   session: StudioNodeTransformSession,
   tool: Exclude<ModelTransformTool, 'select'>,

@@ -11,17 +11,16 @@ import type {
   PerspectiveCamera,
   Raycaster,
   Scene,
-  Texture,
   WebGLRenderer,
 } from 'three'
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 
 import type {
-  ModelReferenceAsset,
   ModelTransformTool,
   StudioCube,
   StudioCameraView,
   StudioControlMode,
+  StudioEditorBackgroundSettings,
   StudioModel,
   StudioModelNode,
   StudioResizeDirection,
@@ -35,6 +34,7 @@ import {
   getStudioNode,
   isNodeEffectivelyLocked,
   isNodeEffectivelyVisible,
+  isPointerStepContinuous,
   sanitizeGestureDelta,
   snapValue,
   type StudioAxis,
@@ -54,6 +54,9 @@ import {
   type StudioSelectionTransformSession,
 } from '@/core/model/modelProductivity'
 
+import EditorBackgroundLayer from './EditorBackgroundLayer.vue'
+import ViewportReferences from './ViewportReferences.vue'
+
 const loadThree = () => import('three')
 type ThreeModule = Awaited<ReturnType<typeof loadThree>>
 type Axis = StudioAxis
@@ -69,6 +72,9 @@ interface DragState {
   projection: { x: number; y: number; worldPerPixel: number }
   cameraDistance: number
   initialExtent: number
+  lastX: number
+  lastY: number
+  lastTime: number
 }
 
 interface DirectTouchState {
@@ -90,18 +96,15 @@ interface DirectTouchState {
   latest: StudioHierarchyState
   active: boolean
   timer: ReturnType<typeof setTimeout>
-}
-
-interface ReferenceMeshRecord {
-  mesh: Mesh
-  texture: Texture
-  url: string
-  assetId: string
+  lastX: number
+  lastY: number
+  lastTime: number
 }
 
 const props = defineProps<{
   model: StudioModel
-  assets: ModelReferenceAsset[]
+  assetUrls: Record<string, string>
+  background: StudioEditorBackgroundSettings
   selectedNodeId?: string
   selectedNodeIds?: string[]
   selectedReferenceId?: string
@@ -152,7 +155,6 @@ let gizmoTool: ModelTransformTool | undefined
 let emptyPointer: { id: number; x: number; y: number } | undefined
 
 const cubeMeshes = new Map<string, Mesh<BoxGeometry, MeshStandardMaterial>>()
-const referenceMeshes = new Map<string, ReferenceMeshRecord>()
 const gizmoPickers: Object3D[] = []
 
 const axisColors: Record<Axis, number> = {
@@ -274,83 +276,6 @@ function syncCubes(): void {
   }
 
   syncSelection()
-  renderScene()
-}
-
-function clearReferenceRecord(id: string): void {
-  const record = referenceMeshes.get(id)
-  if (!record || !scene) return
-  scene.remove(record.mesh)
-  record.mesh.geometry.dispose()
-  disposeMaterial(record.mesh.material)
-  record.texture.dispose()
-  URL.revokeObjectURL(record.url)
-  referenceMeshes.delete(id)
-}
-
-function applyReferenceTransform(id: string): void {
-  const reference = props.model.references.find((entry) => entry.id === id)
-  const record = referenceMeshes.get(id)
-  if (!reference || !record || !three) return
-  record.mesh.position.set(reference.position.x, reference.position.y, reference.position.z)
-  record.mesh.scale.set(reference.size.x, reference.size.y, 1)
-  record.mesh.rotation.set(0, 0, 0)
-  if (reference.view === 'back') record.mesh.rotation.y = Math.PI
-  if (reference.view === 'left') record.mesh.rotation.y = -Math.PI / 2
-  if (reference.view === 'right') record.mesh.rotation.y = Math.PI / 2
-  if (reference.view === 'top') record.mesh.rotation.x = -Math.PI / 2
-  if (reference.view === 'bottom') record.mesh.rotation.x = Math.PI / 2
-  record.mesh.visible = reference.visible && !activeIsolation()
-  record.mesh.userData.locked = reference.locked
-  const material = record.mesh.material as MeshBasicMaterial
-  material.opacity = reference.opacity
-  material.needsUpdate = true
-}
-
-function createReferenceMesh(referenceId: string, asset: ModelReferenceAsset): void {
-  if (!three || !scene) return
-  const reference = props.model.references.find((entry) => entry.id === referenceId)
-  if (!reference) return
-
-  const url = URL.createObjectURL(asset.blob)
-  const texture = new three.TextureLoader().load(
-    url,
-    () => renderScene(),
-    undefined,
-    () => emit('error', 'The reference image could not be opened.'),
-  )
-  texture.colorSpace = three.SRGBColorSpace
-  const material = new three.MeshBasicMaterial({
-    map: texture,
-    transparent: true,
-    opacity: reference.opacity,
-    depthWrite: false,
-    side: three.DoubleSide,
-  })
-  const mesh = new three.Mesh(new three.PlaneGeometry(1, 1), material)
-  mesh.userData.referenceId = referenceId
-  mesh.renderOrder = -2
-  scene.add(mesh)
-  referenceMeshes.set(referenceId, { mesh, texture, url, assetId: asset.id })
-  applyReferenceTransform(referenceId)
-}
-
-function syncReferences(): void {
-  if (!three || !scene) return
-  const activeIds = new Set(props.model.references.map((reference) => reference.id))
-  for (const id of referenceMeshes.keys()) {
-    if (!activeIds.has(id)) clearReferenceRecord(id)
-  }
-
-  for (const reference of props.model.references) {
-    const asset = props.assets.find((entry) => entry.id === reference.assetId)
-    const current = referenceMeshes.get(reference.id)
-    if (!asset) continue
-    if (!current || current.assetId !== asset.id) {
-      if (current) clearReferenceRecord(reference.id)
-      createReferenceMesh(reference.id, asset)
-    } else applyReferenceTransform(reference.id)
-  }
   renderScene()
 }
 
@@ -588,6 +513,38 @@ function dominantCameraAxis(): Axis {
       : 'z'
 }
 
+function pointerStepIsContinuous(
+  state: Pick<DragState, 'lastX' | 'lastY' | 'lastTime'>,
+  event: PointerEvent,
+): boolean {
+  if (!renderer) return false
+  const rect = renderer.domElement.getBoundingClientRect()
+  const continuous = isPointerStepContinuous(
+    { x: state.lastX, y: state.lastY, time: state.lastTime },
+    { x: event.clientX, y: event.clientY, time: event.timeStamp },
+    Math.hypot(rect.width, rect.height),
+  )
+  if (continuous) {
+    state.lastX = event.clientX
+    state.lastY = event.clientY
+    state.lastTime = event.timeStamp
+  }
+  return continuous
+}
+
+function cancelDirectTouch(revert = true): void {
+  if (!directTouch) return
+  const cancelled = directTouch
+  directTouch = undefined
+  clearTimeout(cancelled.timer)
+  if (revert && cancelled.active) emit('previewHierarchy', cancelled.selectionSession.before)
+  if (renderer?.domElement.hasPointerCapture(cancelled.pointerId)) {
+    renderer.domElement.releasePointerCapture(cancelled.pointerId)
+  }
+  if (controls) controls.enabled = true
+  liveTransform.value = ''
+}
+
 function startDirectTouch(event: PointerEvent, hitElementId: string): boolean {
   if (!three || !camera || !renderer || props.controlMode === 'gizmos') return false
   if (!['move', 'scale', 'rotate'].includes(props.tool) || !selectionIsTransformable()) return false
@@ -613,10 +570,6 @@ function startDirectTouch(event: PointerEvent, hitElementId: string): boolean {
     (2 * distance * Math.tan((camera.fov * Math.PI) / 360))
     / Math.max(1, renderer.domElement.clientHeight)
 
-  event.preventDefault()
-  event.stopImmediatePropagation()
-  renderer.domElement.setPointerCapture(event.pointerId)
-  if (controls) controls.enabled = false
   const state: DirectTouchState = {
     pointerId: event.pointerId,
     mode: props.tool as DirectTouchState['mode'],
@@ -635,8 +588,13 @@ function startDirectTouch(event: PointerEvent, hitElementId: string): boolean {
     nodeSession,
     latest: selectionSession.before,
     active: false,
+    lastX: event.clientX,
+    lastY: event.clientY,
+    lastTime: event.timeStamp,
     timer: setTimeout(() => {
       if (!directTouch || directTouch.pointerId !== event.pointerId) return
+      renderer?.domElement.setPointerCapture(event.pointerId)
+      if (controls) controls.enabled = false
       directTouch.active = true
       liveTransform.value = directTouch.mode === 'move'
         ? 'Tactilismo · Move'
@@ -650,7 +608,12 @@ function startDirectTouch(event: PointerEvent, hitElementId: string): boolean {
 }
 
 function onPointerDown(event: PointerEvent): void {
-  if (!three || !raycaster || !camera || !renderer || event.isPrimary === false) return
+  if (event.isPrimary === false) {
+    // A second finger always means camera navigation, never a direct transform.
+    cancelDirectTouch()
+    return
+  }
+  if (!three || !raycaster || !camera || !renderer) return
   emit('activate')
   setRayFromPointer(event)
 
@@ -678,6 +641,9 @@ function onPointerDown(event: PointerEvent): void {
           new three.Vector3(pivot.x, pivot.y, pivot.z),
         ),
         initialExtent: sessionExtent(axis),
+        lastX: event.clientX,
+        lastY: event.clientY,
+        lastTime: event.timeStamp,
       }
       liveTransform.value = transformValueLabel(node, axis)
       if (controls) controls.enabled = false
@@ -704,21 +670,6 @@ function onPointerDown(event: PointerEvent): void {
     return
   }
 
-  const referenceHit = raycaster.intersectObjects(
-    [...referenceMeshes.values()]
-      .map((entry) => entry.mesh)
-      .filter((mesh) => mesh.userData.locked !== true),
-    false,
-  )[0]
-  const referenceId = referenceHit?.object.userData.referenceId as string | undefined
-  if (referenceId) {
-    event.preventDefault()
-    event.stopImmediatePropagation()
-    emit('selectNode', undefined)
-    emit('selectReference', referenceId)
-    return
-  }
-
   emptyPointer = { id: event.pointerId, x: event.clientX, y: event.clientY }
 }
 
@@ -729,17 +680,14 @@ function onPointerMove(event: PointerEvent): void {
     const dy = event.clientY - direct.startY
     if (!direct.active) {
       if (Math.hypot(dx, dy) > 14) {
-        clearTimeout(direct.timer)
-        directTouch = undefined
-        if (renderer?.domElement.hasPointerCapture(event.pointerId)) {
-          renderer.domElement.releasePointerCapture(event.pointerId)
-        }
-        if (controls) controls.enabled = true
+        cancelDirectTouch(false)
       }
       return
     }
 
     event.preventDefault()
+    event.stopImmediatePropagation()
+    if (!pointerStepIsContinuous(direct, event)) return
     if (direct.mode === 'move') {
       const raw = {
         x: (direct.right.x * dx - direct.up.x * dy) * direct.worldPerPixel,
@@ -812,6 +760,8 @@ function onPointerMove(event: PointerEvent): void {
   if (!drag || drag.pointerId !== event.pointerId || !camera || !renderer) return
   const currentDrag = drag
   event.preventDefault()
+  event.stopImmediatePropagation()
+  if (!pointerStepIsContinuous(currentDrag, event)) return
   const dx = event.clientX - currentDrag.startX
   const dy = event.clientY - currentDrag.startY
   let delta: number
@@ -947,16 +897,17 @@ async function initialize(): Promise<void> {
     ])
     three = threeModule
     scene = new three.Scene()
-    scene.background = new three.Color(0x0a0d10)
+    scene.background = null
     camera = new three.PerspectiveCamera(42, 1, 0.1, 2000)
     camera.position.set(54, 42, 54)
 
     renderer = new three.WebGLRenderer({
       antialias: !props.lowPower,
-      alpha: false,
+      alpha: true,
       powerPreference: props.lowPower ? 'low-power' : 'high-performance',
     })
     renderer.outputColorSpace = three.SRGBColorSpace
+    renderer.setClearColor(0x000000, 0)
     renderer.shadowMap.enabled = !props.lowPower
     renderer.shadowMap.type = three.PCFSoftShadowMap
     renderer.domElement.className = 'model-canvas'
@@ -1028,7 +979,6 @@ async function initialize(): Promise<void> {
     resizeObserver = new ResizeObserver(resize)
     resizeObserver.observe(container.value)
     syncCubes()
-    syncReferences()
     resize()
     applyCameraView()
   } catch (error) {
@@ -1039,7 +989,6 @@ async function initialize(): Promise<void> {
 }
 
 watch(() => [props.model.elements, props.model.groups] as const, syncCubes, { deep: true })
-watch(() => [props.model.references, props.assets] as const, syncReferences, { deep: true })
 watch(
   () => [props.selectedNodeId, props.selectedNodeIds] as const,
   () => {
@@ -1051,27 +1000,30 @@ watch(
 watch(
   () => [props.tool, props.controlMode, props.transformSpace] as const,
   () => {
-    if (directTouch) {
-      const cancelled = directTouch
-      clearTimeout(cancelled.timer)
-      emit('previewHierarchy', cancelled.selectionSession.before)
-      if (renderer?.domElement.hasPointerCapture(cancelled.pointerId)) {
-        renderer.domElement.releasePointerCapture(cancelled.pointerId)
-      }
-      if (controls) controls.enabled = true
-      directTouch = undefined
-    }
+    cancelDirectTouch()
     liveTransform.value = ''
     syncSelection()
   },
 )
-watch(() => props.view, (view) => applyCameraView(view))
+watch(() => props.view, (view) => {
+  cancelDirectTouch()
+  if (drag) {
+    const cancelled = drag
+    drag = undefined
+    emit('previewHierarchy', sessionBefore(cancelled.session))
+    if (renderer?.domElement.hasPointerCapture(cancelled.pointerId)) {
+      renderer.domElement.releasePointerCapture(cancelled.pointerId)
+    }
+    if (controls) controls.enabled = true
+    liveTransform.value = ''
+  }
+  applyCameraView(view)
+})
 watch(() => props.lowPower, resize)
 watch(
   () => props.isolatedElementIds,
   () => {
     syncCubes()
-    syncReferences()
   },
   { deep: true },
 )
@@ -1090,7 +1042,6 @@ onBeforeUnmount(() => {
   controls?.removeEventListener('change', renderScene)
   controls?.removeEventListener('end', onControlsEnd)
   controls?.dispose()
-  for (const id of [...referenceMeshes.keys()]) clearReferenceRecord(id)
   for (const mesh of cubeMeshes.values()) mesh.geometry.dispose()
   cubeMeshes.clear()
   cubeMaterial?.dispose()
@@ -1114,6 +1065,17 @@ onBeforeUnmount(() => {
     :data-control-mode="controlMode"
     :data-transform-space="transformSpace"
   >
+    <EditorBackgroundLayer
+      :background="background"
+      :custom-url="background.customAssetId ? assetUrls[background.customAssetId] : undefined"
+      @image-error="emit('error', 'Addons Studio could not restore this editor background from local storage.')"
+    />
+    <ViewportReferences
+      :references="isolatedElementIds?.length ? [] : model.references"
+      :view="view"
+      :asset-urls="assetUrls"
+      @image-error="emit('error', 'Addons Studio could not restore this reference image from local storage.')"
+    />
     <div v-if="webglError" class="viewport-error" role="alert">
       <strong>3D unavailable</strong>
       <span>{{ webglError }}</span>
@@ -1159,6 +1121,8 @@ onBeforeUnmount(() => {
 .model-viewport--active { border-color: #3ca967; }
 
 .model-viewport :deep(.model-canvas) {
+  position: relative;
+  z-index: 2;
   width: 100%;
   height: 100%;
   display: block;
@@ -1167,6 +1131,7 @@ onBeforeUnmount(() => {
 
 .viewport-error {
   position: absolute;
+  z-index: 6;
   inset: 0;
   display: flex;
   flex-direction: column;

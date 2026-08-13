@@ -75,12 +75,16 @@ export interface StudioReferenceImage {
   assetId: string
   name: string
   view: StudioReferenceView
-  position: StudioVector3
-  size: StudioVector2
+  /** Viewport-relative offset. Values are percentages of the viewport dimensions. */
+  position: StudioVector2
+  /** Uniform 2D guide scale. `1` is the default imported size. */
+  scale: number
+  /** Optional 2D rotation in degrees. */
+  rotation: number
   opacity: number
   visible: boolean
-  /** Locked references never participate in viewport picking. */
-  locked: boolean
+  flipHorizontal: boolean
+  flipVertical: boolean
 }
 
 export type StudioCameraView =
@@ -108,6 +112,25 @@ export type StudioControlMode = 'gizmos' | 'tactilismos' | 'hybrid'
 export type StudioTransformSpace = 'global' | 'local' | 'parent'
 export type StudioEditorLanguage = 'en' | 'es'
 
+export type StudioEditorBackgroundType =
+  | 'dark-studio'
+  | 'sky'
+  | 'night'
+  | 'sunset'
+  | 'snow'
+  | 'custom'
+
+export type StudioEditorBackgroundFit = 'fit' | 'fill' | 'stretch'
+
+export interface StudioEditorBackgroundSettings {
+  type: StudioEditorBackgroundType
+  /** A custom image remains available while built-in environments are previewed. */
+  customAssetId?: string
+  fit: StudioEditorBackgroundFit
+  opacity: number
+  brightness: number
+}
+
 export interface StudioModelingSettings {
   resizeDirection: StudioResizeDirection
   controlMode: StudioControlMode
@@ -119,6 +142,7 @@ export interface StudioModelingSettings {
 export interface StudioEditorState {
   snapping: StudioSnappingSettings
   modeling: StudioModelingSettings
+  background: StudioEditorBackgroundSettings
   viewportLayout: StudioViewportLayout
   viewportViews: StudioCameraView[]
 }
@@ -138,13 +162,18 @@ export interface StudioModel {
   revision: number
 }
 
-export interface ModelReferenceAsset {
+export type ModelEditorAssetKind = 'reference' | 'background'
+
+export interface ModelEditorAsset {
   id: string
   modelId: string
   projectId: string
+  kind: ModelEditorAssetKind
   name: string
   mimeType: 'image/png' | 'image/jpeg'
   blob: Blob
+  width: number
+  height: number
   createdAt: number
 }
 

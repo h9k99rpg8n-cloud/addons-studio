@@ -11,6 +11,14 @@ const studioSource = readFileSync(
   resolve(process.cwd(), 'src/features/model-studio/ModelStudioView.vue'),
   'utf8',
 )
+const referencesSource = readFileSync(
+  resolve(process.cwd(), 'src/features/model-studio/components/ViewportReferences.vue'),
+  'utf8',
+)
+const backgroundSource = readFileSync(
+  resolve(process.cwd(), 'src/features/model-studio/components/EditorBackgroundLayer.vue'),
+  'utf8',
+)
 
 describe('mobile Model Studio viewport architecture', () => {
   it('keeps custom touch gizmos and does not import default TransformControls', () => {
@@ -35,8 +43,12 @@ describe('mobile Model Studio viewport architecture', () => {
     expect(studioSource).not.toContain("id: 'orbit'")
   })
 
-  it('keeps locked references out of picking and removes only the visible origin sphere', () => {
-    expect(viewportSource).toContain('mesh.userData.locked !== true')
+  it('keeps References 2.0 outside Three.js picking and removes only the visible origin sphere', () => {
+    expect(viewportSource).toContain('ViewportReferences')
+    expect(viewportSource).not.toContain('TextureLoader')
+    expect(viewportSource).not.toContain('PlaneGeometry')
+    expect(referencesSource).toContain('pointer-events: none')
+    expect(referencesSource).toContain('reference.view === props.view')
     expect(viewportSource).not.toContain('SphereGeometry')
     expect(viewportSource).toContain('GridHelper')
     expect(viewportSource).toContain('AxesHelper')
@@ -56,5 +68,20 @@ describe('mobile Model Studio viewport architecture', () => {
     expect(viewportSource).toContain('sanitizeGestureDelta')
     expect(viewportSource).toContain('initialExtent')
     expect(viewportSource).toContain('cameraDistance')
+    expect(viewportSource).toContain('isPointerStepContinuous')
+  })
+
+  it('renders procedural and custom editor backgrounds behind the transparent WebGL canvas', () => {
+    expect(viewportSource).toContain('setClearColor(0x000000, 0)')
+    for (const type of ['sky', 'night', 'sunset', 'snow', 'custom']) {
+      expect(backgroundSource).toContain(`editor-background--${type}`)
+    }
+    expect(studioSource).toContain('addBackgroundAsset')
+    expect(studioSource).toContain('removeBackgroundAsset')
+  })
+
+  it('keeps every editable Model Studio control at an iOS-safe effective font size', () => {
+    expect(studioSource).toContain("input:not([type='range'])")
+    expect(studioSource).toContain('font-size: max(1rem, 16px)')
   })
 })

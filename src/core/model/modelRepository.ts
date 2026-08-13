@@ -2,9 +2,10 @@ import { AppError } from '@/core/errors/AppError'
 import { type AddonsStudioDatabase, studioDatabase } from '@/core/storage/database'
 import type {
   CreateStudioModelInput,
-  ModelReferenceAsset,
+  ModelEditorAsset,
   StudioModel,
   StudioReferenceImage,
+  StudioReferenceView,
 } from '@/types/model'
 import { createId } from '@/utils/createId'
 
@@ -15,11 +16,13 @@ import {
   MODEL_SCHEMA_VERSION,
 } from './modelFactory'
 import { validateModelInput, validateStoredModel } from './modelValidation'
-
-const REFERENCE_MIME_TYPES = ['image/png', 'image/jpeg'] as const
+import { inspectEditorImage, type EditorImageInspector } from './modelImageValidation'
 
 export class ModelRepository {
-  constructor(private readonly database: AddonsStudioDatabase = studioDatabase) {}
+  constructor(
+    private readonly database: AddonsStudioDatabase = studioDatabase,
+    private readonly inspectImage: EditorImageInspector = inspectEditorImage,
+  ) {}
 
   async createModel(input: CreateStudioModelInput): Promise<StudioModel> {
     const issue = validateModelInput(input)[0]
@@ -110,10 +113,15 @@ export class ModelRepository {
     try {
       await this.database.transaction(
         'rw',
-        [this.database.models, this.database.modelReferenceAssets],
+        [
+          this.database.models,
+          this.database.modelReferenceAssets,
+          this.database.modelEditorAssets,
+        ],
         async () => {
           await this.database.models.delete(id)
           await this.database.modelReferenceAssets.where('modelId').equals(id).delete()
+          await this.database.modelEditorAssets.where('modelId').equals(id).delete()
         },
       )
     } catch (error) {
@@ -126,45 +134,46 @@ export class ModelRepository {
   async addReferenceAsset(
     model: StudioModel,
     file: File,
+    view: StudioReferenceView = 'front',
   ): Promise<{
-    asset: ModelReferenceAsset
+    asset: ModelEditorAsset
     reference: StudioReferenceImage
     model: StudioModel
   }> {
-    if (!REFERENCE_MIME_TYPES.includes(file.type as (typeof REFERENCE_MIME_TYPES)[number])) {
-      throw new AppError('REFERENCE_IMAGE_FAILED', 'Choose a PNG or JPG reference image.')
-    }
-    if (file.size > 12 * 1024 * 1024) {
-      throw new AppError('REFERENCE_IMAGE_FAILED', 'Reference images must be 12 MB or smaller.')
-    }
+    const inspection = await this.inspectImage(file, 'reference')
 
     const assetId = createId()
     const referenceId = createId()
-    const asset: ModelReferenceAsset = {
+    const asset: ModelEditorAsset = {
       id: assetId,
       modelId: model.id,
       projectId: model.projectId,
+      kind: 'reference',
       name: file.name || 'Reference image',
-      mimeType: file.type as ModelReferenceAsset['mimeType'],
-      blob: file,
+      mimeType: inspection.mimeType,
+      blob: file.slice(0, file.size, inspection.mimeType),
+      width: inspection.width,
+      height: inspection.height,
       createdAt: Date.now(),
     }
     const reference: StudioReferenceImage = {
       id: referenceId,
       assetId,
       name: file.name.replace(/\.[^.]+$/, '') || 'Front Reference',
-      view: 'front',
-      position: { x: 0, y: 0, z: -8.25 },
-      size: { x: 24, y: 24 },
+      view,
+      position: { x: 0, y: 0 },
+      scale: 1,
+      rotation: 0,
       opacity: 0.55,
       visible: true,
-      locked: true,
+      flipHorizontal: false,
+      flipVertical: false,
     }
 
     try {
       return await this.database.transaction(
         'rw',
-        [this.database.models, this.database.modelReferenceAssets],
+        [this.database.models, this.database.modelEditorAssets],
         async () => {
           const existing = await this.database.models.get(model.id)
           if (!existing || existing.projectId !== model.projectId) {
@@ -175,7 +184,7 @@ export class ModelRepository {
             references: [...model.references.map(cloneStudioReference), cloneStudioReference(reference)],
           })
           await this.database.models.put(saved)
-          await this.database.modelReferenceAssets.add(asset)
+          await this.database.modelEditorAssets.add(asset)
           return {
             asset: { ...asset },
             reference: cloneStudioReference(reference),
@@ -193,12 +202,125 @@ export class ModelRepository {
     }
   }
 
-  async listReferenceAssets(modelId: string): Promise<ModelReferenceAsset[]> {
-    return this.database.modelReferenceAssets.where('modelId').equals(modelId).toArray()
+  async listEditorAssets(modelId: string): Promise<ModelEditorAsset[]> {
+    const [current, legacy] = await Promise.all([
+      this.database.modelEditorAssets.where('modelId').equals(modelId).toArray(),
+      this.database.modelReferenceAssets.where('modelId').equals(modelId).toArray(),
+    ])
+    const assets = new Map<string, ModelEditorAsset>()
+    for (const asset of legacy) {
+      assets.set(asset.id, {
+        ...asset,
+        kind: 'reference',
+        width: Number.isFinite(asset.width) ? asset.width : 0,
+        height: Number.isFinite(asset.height) ? asset.height : 0,
+      })
+    }
+    for (const asset of current) assets.set(asset.id, { ...asset })
+    return [...assets.values()].sort((a, b) => a.createdAt - b.createdAt)
+  }
+
+  /** Compatibility alias retained for existing callers and migrations. */
+  async listReferenceAssets(modelId: string): Promise<ModelEditorAsset[]> {
+    return (await this.listEditorAssets(modelId)).filter((asset) => asset.kind === 'reference')
+  }
+
+  async addBackgroundAsset(
+    model: StudioModel,
+    file: File,
+  ): Promise<{ asset: ModelEditorAsset; model: StudioModel }> {
+    const inspection = await this.inspectImage(file, 'background')
+    const asset: ModelEditorAsset = {
+      id: createId(),
+      modelId: model.id,
+      projectId: model.projectId,
+      kind: 'background',
+      name: file.name || 'Custom background',
+      mimeType: inspection.mimeType,
+      blob: file.slice(0, file.size, inspection.mimeType),
+      width: inspection.width,
+      height: inspection.height,
+      createdAt: Date.now(),
+    }
+    const previousAssetId = model.editor.background.customAssetId
+
+    try {
+      return await this.database.transaction(
+        'rw',
+        [this.database.models, this.database.modelEditorAssets],
+        async () => {
+          const existing = await this.database.models.get(model.id)
+          if (!existing || existing.projectId !== model.projectId) {
+            throw new AppError('MODEL_NOT_FOUND', 'This model is no longer available in the project.')
+          }
+          const saved = this.prepareSavedModel(existing, {
+            ...cloneStudioModel(model),
+            editor: {
+              ...cloneStudioModel(model).editor,
+              background: {
+                ...model.editor.background,
+                type: 'custom',
+                customAssetId: asset.id,
+              },
+            },
+          })
+          await this.database.modelEditorAssets.add(asset)
+          await this.database.models.put(saved)
+          if (previousAssetId && previousAssetId !== asset.id) {
+            await this.database.modelEditorAssets.delete(previousAssetId)
+          }
+          return { asset: { ...asset }, model: cloneStudioModel(saved) }
+        },
+      )
+    } catch (error) {
+      if (error instanceof AppError) throw error
+      throw new AppError(
+        'EDITOR_IMAGE_FAILED',
+        'Addons Studio could not store this custom background on this device.',
+        { cause: error },
+      )
+    }
+  }
+
+  async removeBackgroundAsset(model: StudioModel): Promise<StudioModel> {
+    const assetId = model.editor.background.customAssetId
+    if (!assetId) return cloneStudioModel(model)
+    try {
+      return await this.database.transaction(
+        'rw',
+        [this.database.models, this.database.modelEditorAssets],
+        async () => {
+          const existing = await this.database.models.get(model.id)
+          if (!existing) throw new AppError('MODEL_NOT_FOUND', 'This model is no longer available.')
+          const normalized = cloneStudioModel(model)
+          normalized.editor.background = {
+            ...normalized.editor.background,
+            type: 'dark-studio',
+            customAssetId: undefined,
+          }
+          const saved = this.prepareSavedModel(existing, normalized)
+          await this.database.models.put(saved)
+          await this.database.modelEditorAssets.delete(assetId)
+          return cloneStudioModel(saved)
+        },
+      )
+    } catch (error) {
+      if (error instanceof AppError) throw error
+      throw new AppError('EDITOR_IMAGE_FAILED', 'The custom background could not be removed.', {
+        cause: error,
+      })
+    }
   }
 
   async deleteReferenceAsset(id: string): Promise<void> {
-    await this.database.modelReferenceAssets.delete(id)
+    await this.database.transaction(
+      'rw',
+      [this.database.modelEditorAssets, this.database.modelReferenceAssets],
+      async () => {
+        await this.database.modelEditorAssets.delete(id)
+        await this.database.modelReferenceAssets.delete(id)
+      },
+    )
   }
 
   async deleteReference(model: StudioModel, referenceId: string): Promise<StudioModel> {
@@ -210,7 +332,11 @@ export class ModelRepository {
     try {
       return await this.database.transaction(
         'rw',
-        [this.database.models, this.database.modelReferenceAssets],
+        [
+          this.database.models,
+          this.database.modelEditorAssets,
+          this.database.modelReferenceAssets,
+        ],
         async () => {
           const existing = await this.database.models.get(model.id)
           if (!existing || existing.projectId !== model.projectId) {
@@ -221,6 +347,7 @@ export class ModelRepository {
             references: model.references.filter((entry) => entry.id !== referenceId),
           })
           await this.database.models.put(saved)
+          await this.database.modelEditorAssets.delete(reference.assetId)
           await this.database.modelReferenceAssets.delete(reference.assetId)
           return cloneStudioModel(saved)
         },

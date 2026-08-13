@@ -294,7 +294,7 @@ async function submit(): Promise<void> {
         <label class="experiment-option">
           <span>
             <strong>Enable experimental project features</strong>
-            <small>No unsupported Minecraft flags are applied in Alpha 0.0.3.6.</small>
+            <small>No unsupported Minecraft flags are applied in Alpha 0.0.3.6.1.</small>
           </span>
           <input v-model="form.experimentalFeatures" type="checkbox" role="switch" />
         </label>

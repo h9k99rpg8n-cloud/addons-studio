@@ -147,10 +147,14 @@ export class ProjectRepository {
     }
 
     try {
-      const [sourceModels, sourceAssets] = await Promise.all([
+      const [sourceModels, currentAssets, legacyAssets] = await Promise.all([
         this.database.models.where('projectId').equals(source.id).toArray(),
+        this.database.modelEditorAssets.where('projectId').equals(source.id).toArray(),
         this.database.modelReferenceAssets.where('projectId').equals(source.id).toArray(),
       ])
+      const sourceAssets = [...new Map(
+        [...legacyAssets, ...currentAssets].map((asset) => [asset.id, asset]),
+      ).values()]
       const modelIds = new Map(sourceModels.map((model) => [model.id, createId()]))
       const assetIds = new Map(sourceAssets.map((asset) => [asset.id, createId()]))
 
@@ -179,6 +183,19 @@ export class ProjectRepository {
               id: createId(),
               assetId: assetIds.get(reference.assetId)!,
             })),
+          editor: {
+            ...normalized.editor,
+            background: {
+              ...normalized.editor.background,
+              customAssetId: normalized.editor.background.customAssetId
+                ? assetIds.get(normalized.editor.background.customAssetId)
+                : undefined,
+              type: normalized.editor.background.type === 'custom'
+                && !assetIds.has(normalized.editor.background.customAssetId ?? '')
+                ? 'dark-studio' as const
+                : normalized.editor.background.type,
+            },
+          },
           createdAt: now,
           updatedAt: now,
           schemaVersion: MODEL_SCHEMA_VERSION,
@@ -193,6 +210,9 @@ export class ProjectRepository {
           id: assetIds.get(asset.id)!,
           modelId,
           projectId: duplicate.id,
+          kind: asset.kind ?? 'reference',
+          width: Number.isFinite(asset.width) ? asset.width : 0,
+          height: Number.isFinite(asset.height) ? asset.height : 0,
           createdAt: now,
         }]
       })
@@ -204,13 +224,14 @@ export class ProjectRepository {
           this.database.snapshots,
           this.database.models,
           this.database.modelReferenceAssets,
+          this.database.modelEditorAssets,
         ],
         async () => {
           await this.database.projects.add(duplicate)
           await this.addSnapshot(duplicate, 'created')
           if (duplicatedModels.length) await this.database.models.bulkAdd(duplicatedModels)
           if (duplicatedAssets.length) {
-            await this.database.modelReferenceAssets.bulkAdd(duplicatedAssets)
+            await this.database.modelEditorAssets.bulkAdd(duplicatedAssets)
           }
         },
       )
@@ -233,12 +254,14 @@ export class ProjectRepository {
           this.database.snapshots,
           this.database.models,
           this.database.modelReferenceAssets,
+          this.database.modelEditorAssets,
         ],
         async () => {
           await this.database.projects.delete(id)
           await this.database.snapshots.where('projectId').equals(id).delete()
           await this.database.models.where('projectId').equals(id).delete()
           await this.database.modelReferenceAssets.where('projectId').equals(id).delete()
+          await this.database.modelEditorAssets.where('projectId').equals(id).delete()
         },
       )
     } catch (error) {

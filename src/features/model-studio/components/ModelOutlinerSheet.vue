@@ -34,7 +34,6 @@ defineEmits<{
   deleteGroup: [id: string]
   editReference: [id: string]
   toggleReference: [id: string]
-  toggleReferenceLock: [id: string]
   deleteReference: [id: string]
 }>()
 
@@ -162,10 +161,7 @@ function nodeStatus(visible: boolean, locked: boolean, context: string): string 
           >
             <button type="button" class="outliner-row__select" @click="$emit('selectReference', reference.id)">
               <AppIcon name="file" :size="20" />
-              <span><strong>{{ reference.name }}</strong><small>{{ reference.locked ? 'Locked' : 'Unlocked' }} · {{ reference.view }}</small></span>
-            </button>
-            <button type="button" :aria-label="`${reference.locked ? 'Unlock' : 'Lock'} ${reference.name}`" @click="$emit('toggleReferenceLock', reference.id)">
-              <AppIcon :name="reference.locked ? 'lock' : 'unlock'" :size="18" />
+              <span><strong>{{ reference.name }}</strong><small>{{ reference.view }} guide · {{ Math.round(reference.opacity * 100) }}% · {{ reference.visible ? 'Visible' : 'Hidden' }}</small></span>
             </button>
             <button type="button" :aria-label="`${reference.visible ? 'Hide' : 'Show'} ${reference.name}`" @click="$emit('toggleReference', reference.id)">
               <AppIcon :name="reference.visible ? 'eye' : 'eye-off'" :size="18" />

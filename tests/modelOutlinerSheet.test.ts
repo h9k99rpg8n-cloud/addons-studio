@@ -10,7 +10,7 @@ const BottomSheetStub = {
 }
 
 describe('Model Studio Outliner', () => {
-  it('renders hierarchy status, touch actions, multi-selection, and reference lock state', async () => {
+  it('renders hierarchy status, touch actions, multi-selection, and viewport references', async () => {
     const model = createEmptyStudioModel('project', 'Model', 'geometry.project.model')
     const cube = createStudioCube()
     const group = createStudioGroup(0, [cube])
@@ -22,11 +22,13 @@ describe('Model Studio Outliner', () => {
       assetId: 'asset',
       name: 'Front Guide',
       view: 'front',
-      position: { x: 0, y: 0, z: 0 },
-      size: { x: 16, y: 16 },
+      position: { x: 0, y: 0 },
+      scale: 1,
+      rotation: 0,
       opacity: 0.5,
       visible: true,
-      locked: true,
+      flipHorizontal: false,
+      flipVertical: false,
     })
 
     const wrapper = mount(ModelOutlinerSheet, {
@@ -42,15 +44,15 @@ describe('Model Studio Outliner', () => {
 
     expect(wrapper.text()).toContain('Group')
     expect(wrapper.text()).toContain('Cube · Group')
-    expect(wrapper.text()).toContain('Locked · front')
+    expect(wrapper.text()).toContain('front guide · 50% · Visible')
 
     await wrapper.get('[aria-label="Group actions"]').trigger('click')
     await wrapper.get('[aria-label="Lock Group"]').trigger('click')
     await wrapper.get('.new-group').trigger('click')
-    await wrapper.get('[aria-label="Unlock Front Guide"]').trigger('click')
+    await wrapper.get('[aria-label="Hide Front Guide"]').trigger('click')
     expect(wrapper.emitted('showActions')?.[0]).toEqual([group.id])
     expect(wrapper.emitted('toggleNodeLock')?.[0]).toEqual([group.id])
     expect(wrapper.emitted('setMultiSelect')?.[0]).toEqual([true])
-    expect(wrapper.emitted('toggleReferenceLock')?.[0]).toEqual(['reference'])
+    expect(wrapper.emitted('toggleReference')?.[0]).toEqual(['reference'])
   })
 })
