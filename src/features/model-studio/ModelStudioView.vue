@@ -638,13 +638,12 @@ function commitNumericNode(payload: {
   if (!model.value) return
   numericSession ??= captureNodeTransform(model.value, payload.after.id)
   if (!numericSession) return
-  const after = buildNodeTransformState(numericSession, payload.after, {
-    operation: payload.operation,
-    axis: payload.axis,
-    resizeDirection: model.value.editor.modeling.resizeDirection,
-    transformSpace: model.value.editor.modeling.transformSpace,
-  })
-  commitHierarchy({ before: numericSession.before, after, label: payload.label })
+  // TransformPropertiesSheet always flushes a preview immediately before this
+  // commit. Record that already-applied hierarchy instead of calculating the
+  // transform again from a draft that can contain derived center coordinates.
+  const applied = captureNodeTransform(model.value, payload.after.id)
+  if (!applied) return
+  commitHierarchy({ before: numericSession.before, after: applied.before, label: payload.label })
   numericSession = undefined
 }
 

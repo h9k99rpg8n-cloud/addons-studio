@@ -33,7 +33,10 @@ function cloneNode(node: StudioModelNode): StudioModelNode {
 watch(
   () => [props.open, props.node] as const,
   () => {
-    if (props.node) draft.value = cloneNode(props.node)
+    // Live previews replace the model node. Do not feed those derived position/
+    // pivot values back into the user's draft while the same field is active,
+    // otherwise a symmetric resize can apply its center offset a second time.
+    if (props.node && !beforeEdit.value) draft.value = cloneNode(props.node)
   },
   { immediate: true, deep: true },
 )

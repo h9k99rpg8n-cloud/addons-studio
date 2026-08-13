@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Model records now normalize to internal schema version 3 while preserving Alpha 0.0.3.5 hierarchy, pivots, references, editor layout, and snapping data.
 - Transform gizmos visibly follow the selected Global, Local, or Parent basis; group rotations apply the same world-space axis to affected children.
 - Model Studio editable controls use at least 16 CSS pixels so iPhone Safari does not trigger unwanted focus zoom.
+- Numeric Resize commits now record the already-applied preview, preventing a symmetric center offset from being applied twice when a mobile properties sheet closes.
 
 ### Preserved
 
