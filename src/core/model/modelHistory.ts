@@ -1,6 +1,12 @@
-import type { StudioModel, StudioModelElement } from '@/types/model'
+import type {
+  StudioGroup,
+  StudioModel,
+  StudioModelElement,
+  StudioReferenceImage,
+} from '@/types/model'
 
-import { cloneStudioCube } from './modelFactory'
+import { cloneStudioCube, cloneStudioGroup, cloneStudioReference } from './modelFactory'
+import type { StudioHierarchyState } from './modelHierarchy'
 
 export interface ModelCommand {
   readonly label: string
@@ -15,6 +21,16 @@ function cloneElement(element: StudioModelElement): StudioModelElement {
 function replaceElement(model: StudioModel, element: StudioModelElement): void {
   const index = model.elements.findIndex((entry) => entry.id === element.id)
   if (index >= 0) model.elements.splice(index, 1, cloneElement(element))
+}
+
+function replaceGroup(model: StudioModel, group: StudioGroup): void {
+  const index = model.groups.findIndex((entry) => entry.id === group.id)
+  if (index >= 0) model.groups.splice(index, 1, cloneStudioGroup(group))
+}
+
+function applyHierarchyState(model: StudioModel, state: StudioHierarchyState): void {
+  state.elements.forEach((element) => replaceElement(model, element))
+  state.groups.forEach((group) => replaceGroup(model, group))
 }
 
 export class ModelCommandHistory {
@@ -104,5 +120,125 @@ export function updateElementCommand(
     label,
     redo: (model) => replaceElement(model, afterSnapshot),
     undo: (model) => replaceElement(model, beforeSnapshot),
+  }
+}
+
+export function createGroupCommand(group: StudioGroup, index: number): ModelCommand {
+  const snapshot = cloneStudioGroup(group)
+  return {
+    label: `Create ${snapshot.name}`,
+    redo(model) {
+      if (!model.groups.some((entry) => entry.id === snapshot.id)) {
+        model.groups.splice(Math.min(index, model.groups.length), 0, cloneStudioGroup(snapshot))
+      }
+    },
+    undo(model) {
+      model.groups = model.groups.filter((entry) => entry.id !== snapshot.id)
+    },
+  }
+}
+
+export function createHierarchyCommand(
+  group: StudioGroup,
+  elements: StudioModelElement[],
+  label = `Duplicate ${group.name}`,
+): ModelCommand {
+  const groupSnapshot = cloneStudioGroup(group)
+  const elementSnapshots = elements.map(cloneStudioCube)
+  return {
+    label,
+    redo(model) {
+      if (!model.groups.some((entry) => entry.id === groupSnapshot.id)) {
+        model.groups.push(cloneStudioGroup(groupSnapshot))
+      }
+      for (const element of elementSnapshots) {
+        if (!model.elements.some((entry) => entry.id === element.id)) {
+          model.elements.push(cloneStudioCube(element))
+        }
+      }
+    },
+    undo(model) {
+      const elementIds = new Set(elementSnapshots.map((element) => element.id))
+      model.elements = model.elements.filter((element) => !elementIds.has(element.id))
+      model.groups = model.groups.filter((entry) => entry.id !== groupSnapshot.id)
+    },
+  }
+}
+
+export function deleteGroupCommand(
+  group: StudioGroup,
+  index: number,
+  children: StudioModelElement[],
+): ModelCommand {
+  const groupSnapshot = cloneStudioGroup(group)
+  const beforeChildren = children.map(cloneStudioCube)
+  const rootChildren = beforeChildren.map((element) => ({
+    ...cloneStudioCube(element),
+    parentId: undefined,
+  }))
+  return {
+    label: `Delete ${groupSnapshot.name}`,
+    redo(model) {
+      model.groups = model.groups.filter((entry) => entry.id !== groupSnapshot.id)
+      rootChildren.forEach((element) => replaceElement(model, element))
+    },
+    undo(model) {
+      if (!model.groups.some((entry) => entry.id === groupSnapshot.id)) {
+        model.groups.splice(Math.min(index, model.groups.length), 0, cloneStudioGroup(groupSnapshot))
+      }
+      beforeChildren.forEach((element) => replaceElement(model, element))
+    },
+  }
+}
+
+export function updateGroupCommand(
+  before: StudioGroup,
+  after: StudioGroup,
+  label: string,
+): ModelCommand {
+  const beforeSnapshot = cloneStudioGroup(before)
+  const afterSnapshot = cloneStudioGroup(after)
+  return {
+    label,
+    redo: (model) => replaceGroup(model, afterSnapshot),
+    undo: (model) => replaceGroup(model, beforeSnapshot),
+  }
+}
+
+export function updateHierarchyCommand(
+  before: StudioHierarchyState,
+  after: StudioHierarchyState,
+  label: string,
+): ModelCommand {
+  const beforeSnapshot: StudioHierarchyState = {
+    elements: before.elements.map(cloneStudioCube),
+    groups: before.groups.map(cloneStudioGroup),
+  }
+  const afterSnapshot: StudioHierarchyState = {
+    elements: after.elements.map(cloneStudioCube),
+    groups: after.groups.map(cloneStudioGroup),
+  }
+  return {
+    label,
+    redo: (model) => applyHierarchyState(model, afterSnapshot),
+    undo: (model) => applyHierarchyState(model, beforeSnapshot),
+  }
+}
+
+export function updateReferenceCommand(
+  before: StudioReferenceImage,
+  after: StudioReferenceImage,
+  label: string,
+): ModelCommand {
+  const beforeSnapshot = cloneStudioReference(before)
+  const afterSnapshot = cloneStudioReference(after)
+  const replace = (model: StudioModel, reference: StudioReferenceImage) => {
+    const index = model.references.findIndex((entry) => entry.id === reference.id)
+    if (index >= 0) model.references.splice(index, 1, cloneStudioReference(reference))
+  }
+  return {
+    label,
+    redo: (model) => replace(model, afterSnapshot),
+    undo: (model) => replace(model, beforeSnapshot),
   }
 }

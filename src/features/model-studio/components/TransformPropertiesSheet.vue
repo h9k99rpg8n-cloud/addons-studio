@@ -2,55 +2,67 @@
 import { ref, watch } from 'vue'
 
 import BottomSheet from '@/components/common/BottomSheet.vue'
-import { cloneStudioCube } from '@/core/model/modelFactory'
-import type { StudioCube, StudioModelElement } from '@/types/model'
+import { cloneStudioCube, cloneStudioGroup } from '@/core/model/modelFactory'
+import type { StudioModelNode } from '@/types/model'
 
 const props = defineProps<{
   open: boolean
-  element?: StudioCube
+  node?: StudioModelNode
 }>()
 
 const emit = defineEmits<{
   close: []
-  preview: [element: StudioModelElement]
-  commit: [payload: { before: StudioModelElement; after: StudioModelElement; label: string }]
+  begin: []
+  preview: [node: StudioModelNode]
+  commit: [payload: { after: StudioModelNode; label: string }]
 }>()
 
-const draft = ref<StudioCube>()
-const beforeEdit = ref<StudioCube>()
+const draft = ref<StudioModelNode>()
+const beforeEdit = ref<StudioModelNode>()
 const activeLabel = ref<string>()
 
+function cloneNode(node: StudioModelNode): StudioModelNode {
+  return node.type === 'cube' ? cloneStudioCube(node) : cloneStudioGroup(node)
+}
+
 watch(
-  () => [props.open, props.element] as const,
+  () => [props.open, props.node] as const,
   () => {
-    if (props.element) draft.value = cloneStudioCube(props.element)
+    if (props.node) draft.value = cloneNode(props.node)
   },
   { immediate: true, deep: true },
 )
 
 function beginEdit(label: string): void {
-  if (!props.element) return
-  beforeEdit.value = cloneStudioCube(props.element)
+  if (!props.node) return
+  beforeEdit.value = cloneNode(props.node)
   activeLabel.value = label
+  emit('begin')
 }
 
 function preview(): void {
   if (!draft.value) return
-  draft.value.size.x = Math.max(0.25, Number(draft.value.size.x) || 0.25)
-  draft.value.size.y = Math.max(0.25, Number(draft.value.size.y) || 0.25)
-  draft.value.size.z = Math.max(0.25, Number(draft.value.size.z) || 0.25)
-  emit('preview', cloneStudioCube(draft.value))
+  if (draft.value.type === 'cube') {
+    draft.value.size.x = Math.max(0.25, Number(draft.value.size.x) || 0.25)
+    draft.value.size.y = Math.max(0.25, Number(draft.value.size.y) || 0.25)
+    draft.value.size.z = Math.max(0.25, Number(draft.value.size.z) || 0.25)
+  } else {
+    draft.value.scale.x = Math.max(0.05, Number(draft.value.scale.x) || 0.05)
+    draft.value.scale.y = Math.max(0.05, Number(draft.value.scale.y) || 0.05)
+    draft.value.scale.z = Math.max(0.05, Number(draft.value.scale.z) || 0.05)
+  }
+  emit('preview', cloneNode(draft.value))
 }
 
 function commit(): void {
   if (!draft.value || !beforeEdit.value) return
   preview()
-  const before = cloneStudioCube(beforeEdit.value)
-  const after = cloneStudioCube(draft.value)
-  const label = activeLabel.value ?? 'Edit cube'
+  const before = cloneNode(beforeEdit.value)
+  const after = cloneNode(draft.value)
+  const label = activeLabel.value ?? `Edit ${after.type}`
   beforeEdit.value = undefined
   activeLabel.value = undefined
-  if (JSON.stringify(before) !== JSON.stringify(after)) emit('commit', { before, after, label })
+  if (JSON.stringify(before) !== JSON.stringify(after)) emit('commit', { after, label })
 }
 
 function finishAndClose(): void {
@@ -63,8 +75,8 @@ function finishAndClose(): void {
 
 <template>
   <BottomSheet
-    :open="open && Boolean(element)"
-    :title="element?.name ?? 'Cube Properties'"
+    :open="open && Boolean(node)"
+    :title="node?.name ?? 'Object Properties'"
     description="Exact values update the viewport immediately"
     @close="finishAndClose"
   >
@@ -76,7 +88,7 @@ function finishAndClose(): void {
           class="text-input"
           maxlength="60"
           autocomplete="off"
-          @focus="beginEdit('Rename cube')"
+          @focus="beginEdit(`Rename ${draft.type}`)"
           @input="preview"
           @blur="commit"
         />
@@ -91,7 +103,7 @@ function finishAndClose(): void {
             type="number"
             inputmode="decimal"
             step="0.1"
-            @focus="beginEdit('Move cube')"
+            @focus="beginEdit(`Move ${draft.type}`)"
             @input="preview"
             @blur="commit"
           />
@@ -99,16 +111,28 @@ function finishAndClose(): void {
       </fieldset>
 
       <fieldset>
-        <legend>Size</legend>
+        <legend>{{ draft.type === 'cube' ? 'Size' : 'Group Scale' }}</legend>
         <label v-for="axis in (['x', 'y', 'z'] as const)" :key="`size-${axis}`">
           <span :class="`axis axis--${axis}`">{{ axis.toUpperCase() }}</span>
           <input
+            v-if="draft.type === 'cube'"
             v-model.number="draft.size[axis]"
             type="number"
             inputmode="decimal"
             min="0.25"
             step="0.25"
-            @focus="beginEdit('Resize cube')"
+            @focus="beginEdit(`Resize ${draft.type}`)"
+            @input="preview"
+            @blur="commit"
+          />
+          <input
+            v-else
+            v-model.number="draft.scale[axis]"
+            type="number"
+            inputmode="decimal"
+            min="0.05"
+            step="0.05"
+            @focus="beginEdit(`Resize ${draft.type}`)"
             @input="preview"
             @blur="commit"
           />
@@ -124,7 +148,7 @@ function finishAndClose(): void {
             type="number"
             inputmode="decimal"
             step="1"
-            @focus="beginEdit('Rotate cube')"
+            @focus="beginEdit(`Rotate ${draft.type}`)"
             @input="preview"
             @blur="commit"
           />

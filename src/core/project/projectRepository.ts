@@ -1,5 +1,12 @@
 import { AppError } from '@/core/errors/AppError'
 import {
+  cloneStudioCube,
+  cloneStudioGroup,
+  cloneStudioModel,
+  cloneStudioReference,
+  MODEL_SCHEMA_VERSION,
+} from '@/core/model/modelFactory'
+import {
   DEFAULT_PROJECT_ICON,
   MAX_RECOVERY_SNAPSHOTS,
   PROJECT_SCHEMA_VERSION,
@@ -148,25 +155,33 @@ export class ProjectRepository {
       const assetIds = new Map(sourceAssets.map((asset) => [asset.id, createId()]))
 
       const duplicatedModels = sourceModels.map((model) => {
-        const elementIds = new Map(model.elements.map((element) => [element.id, createId()]))
+        const normalized = cloneStudioModel(model)
+        const elementIds = new Map(normalized.elements.map((element) => [element.id, createId()]))
+        const groupIds = new Map(normalized.groups.map((group) => [group.id, createId()]))
         return {
-          ...structuredClone(model),
+          ...normalized,
           id: modelIds.get(model.id)!,
           projectId: duplicate.id,
-          elements: model.elements.map((element) => ({
-            ...structuredClone(element),
+          elements: normalized.elements.map((element) => ({
+            ...cloneStudioCube(element),
             id: elementIds.get(element.id)!,
-            parentId: element.parentId ? elementIds.get(element.parentId) : undefined,
+            parentId: element.parentId ? groupIds.get(element.parentId) : undefined,
           })),
-          references: model.references
+          groups: normalized.groups.map((group) => ({
+            ...cloneStudioGroup(group),
+            id: groupIds.get(group.id)!,
+            parentId: group.parentId ? groupIds.get(group.parentId) : undefined,
+          })),
+          references: normalized.references
             .filter((reference) => assetIds.has(reference.assetId))
             .map((reference) => ({
-              ...structuredClone(reference),
+              ...cloneStudioReference(reference),
               id: createId(),
               assetId: assetIds.get(reference.assetId)!,
             })),
           createdAt: now,
           updatedAt: now,
+          schemaVersion: MODEL_SCHEMA_VERSION,
           revision: 1,
         }
       })

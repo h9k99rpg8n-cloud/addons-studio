@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { createStudioCube } from '@/core/model/modelFactory'
+import { createStudioCube, createStudioGroup, MODEL_SCHEMA_VERSION } from '@/core/model/modelFactory'
 import { ModelRepository } from '@/core/model/modelRepository'
 import { DEFAULT_BEDROCK_VERSION } from '@/core/project/bedrockVersions'
 import { ProjectRepository } from '@/core/project/projectRepository'
@@ -51,6 +51,89 @@ describe('ModelRepository', () => {
 
     expect(reopened?.elements).toHaveLength(2)
     expect(reopened?.elements[1]?.rotation.y).toBe(90)
+  })
+
+  it('persists hierarchy, pivots, locked references, viewport layout, and snapping', async () => {
+    let model = await models.createModel({
+      projectId,
+      name: 'Workflow Model',
+      identifier: 'geometry.model_project.workflow_model',
+    })
+    const cube = createStudioCube()
+    cube.pivot = { x: 2, y: 3, z: 4 }
+    cube.defaultPivot = { x: 8, y: 8, z: 8 }
+    const group = createStudioGroup(0, [cube])
+    cube.parentId = group.id
+    model.groups.push(group)
+    model.elements.push(cube)
+    model.editor.viewportLayout = 2
+    model.editor.viewportViews = ['front', 'perspective']
+    model.editor.snapping = { transform: 0.25, customTransform: 0.125, rotation: 22.5 }
+    model = (
+      await models.addReferenceAsset(
+        model,
+        new File(['reference'], 'locked.jpg', { type: 'image/jpeg' }),
+      )
+    ).model
+    await models.saveModel(model)
+    database.close()
+
+    database = new AddonsStudioDatabase(databaseName)
+    models = new ModelRepository(database)
+    const reopened = await models.getModel(model.id)
+
+    expect(reopened?.schemaVersion).toBe(MODEL_SCHEMA_VERSION)
+    expect(reopened?.groups[0]?.id).toBe(group.id)
+    expect(reopened?.elements[0]).toMatchObject({ parentId: group.id, pivot: { x: 2, y: 3, z: 4 } })
+    expect(reopened?.references[0]?.locked).toBe(true)
+    expect(reopened?.editor).toMatchObject({
+      viewportLayout: 2,
+      viewportViews: ['front', 'perspective'],
+      snapping: { transform: 0.25, customTransform: 0.125, rotation: 22.5 },
+    })
+  })
+
+  it('normalizes Alpha 0.0.3 model records without deleting cubes or references', async () => {
+    const model = await models.createModel({
+      projectId,
+      name: 'Legacy Model',
+      identifier: 'geometry.model_project.legacy_model',
+    })
+    const cube = createStudioCube()
+    const legacy = {
+      ...model,
+      elements: [{
+        id: cube.id,
+        type: 'cube' as const,
+        name: cube.name,
+        position: cube.position,
+        size: cube.size,
+        rotation: cube.rotation,
+        visible: true,
+      }],
+      groups: undefined,
+      editor: undefined,
+      references: [{
+        id: 'legacy-reference',
+        assetId: 'legacy-asset',
+        name: 'Side Guide',
+        view: 'side',
+        position: { x: 0, y: 0, z: 0 },
+        size: { x: 16, y: 16 },
+        opacity: 0.5,
+        visible: true,
+      }],
+      schemaVersion: 1,
+    }
+    await database.models.put(legacy as never)
+
+    const reopened = await models.getModel(model.id)
+    expect(reopened?.elements).toHaveLength(1)
+    expect(reopened?.elements[0]?.pivot).toEqual({ x: 8, y: 8, z: 8 })
+    expect(reopened?.groups).toEqual([])
+    expect(reopened?.references[0]).toMatchObject({ view: 'right', locked: true })
+    expect(reopened?.editor.viewportLayout).toBe(1)
+    expect(reopened?.schemaVersion).toBe(MODEL_SCHEMA_VERSION)
   })
 
   it('stores reference blobs with model metadata and deletes both atomically', async () => {

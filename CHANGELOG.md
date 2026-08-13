@@ -10,6 +10,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Scope to be selected for the next development prompt; no future editor is implied as complete.
 
+## [0.0.3.5] - 2026-08-12
+
+### Added
+
+- Real cube duplication from the Outliner and object action sheet with stable new IDs, sensible names, copied transforms/visibility/metadata, retained group membership, and undo/redo.
+- One-level model groups with create, rename, organize, expand/collapse, visibility, duplication, whole-group transforms, and safe deletion that moves children to root.
+- Persistent cube/group pivots, a distinct gold Pivot gizmo, exact XYZ editing, Center Pivot, Reset Pivot, and Pivot to Origin.
+- Perspective, isometric, front, back, left, right, top, and bottom editor camera views.
+- Fully functional one- and two-viewport layouts with independent views, active-panel feedback, temporary maximize, and a lower-power secondary viewport.
+- Move/size snapping presets with a custom value and degree-based rotation snapping presets.
+- Tests covering hierarchy duplication, group transforms, pivot behavior, snapping, model-schema migration, persistence, project duplication, and command history.
+
+### Changed
+
+- Camera navigation no longer requires a dedicated Orbit tool: empty-space drag orbits, pinch zooms, and two-finger gestures pan while Select/Move/Rotate/Resize/Pivot remains active.
+- Reference images now default to locked, do not participate in selection while locked, and support six orientations when unlocked.
+- Model records normalize to internal schema version 2 without resetting IndexedDB or discarding Alpha 0.0.3 cubes/references.
+- Project duplication now remaps model groups and child relationships while preserving future-compatible node metadata.
+- Removed the visible world-origin sphere while retaining the mathematical origin, axes, and green grid.
+
+### Preserved
+
+- Alpha 0.0.3 projects, folders, Model Studio format, reference blobs, autosave, undo/redo, custom Addons Studio touch gizmos, PWA shell, and GitHub Pages architecture.
+- Alpha 0.0.2 visual identity and the existing green Addons Studio cube icon.
+
 ## [0.0.3] - 2026-08-12
 
 ### Added
@@ -77,7 +102,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - GitHub Actions workflows for CI and GitHub Pages.
 - Project, contribution, security, architecture, license, and third-party documentation.
 
-[Unreleased]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3...HEAD
+[Unreleased]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.5...HEAD
+[0.0.3.5]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3...v0.0.3.5
 [0.0.3]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.1-dev...v0.0.2
 [0.0.1-dev]: https://github.com/h9k99rpg8n-cloud/addons-studio/releases/tag/v0.0.1-dev

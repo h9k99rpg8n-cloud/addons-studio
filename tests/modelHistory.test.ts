@@ -3,11 +3,14 @@ import { reactive } from 'vue'
 
 import {
   createElementCommand,
+  createGroupCommand,
+  createHierarchyCommand,
   deleteElementCommand,
+  deleteGroupCommand,
   ModelCommandHistory,
   updateElementCommand,
 } from '@/core/model/modelHistory'
-import { createEmptyStudioModel, createStudioCube } from '@/core/model/modelFactory'
+import { createEmptyStudioModel, createStudioCube, createStudioGroup } from '@/core/model/modelFactory'
 
 describe('Model Studio command history', () => {
   it('undoes and redoes cube creation and deletion', () => {
@@ -51,5 +54,35 @@ describe('Model Studio command history', () => {
     expect(model.elements[0]).toEqual(before)
     history.redo(model)
     expect(model.elements[0]).toEqual(after)
+  })
+
+  it('undoes group creation, group duplication, and safe group deletion', () => {
+    const model = createEmptyStudioModel('project', 'Groups', 'geometry.project.groups')
+    const cube = createStudioCube()
+    const group = createStudioGroup(0, [cube])
+    cube.parentId = group.id
+    const history = new ModelCommandHistory()
+
+    history.execute(createGroupCommand(group, 0), model)
+    history.execute(createElementCommand(cube, 0), model)
+
+    const copiedGroup = createStudioGroup(1, [cube])
+    const copiedCube = { ...createStudioCube(1), parentId: copiedGroup.id }
+    history.execute(createHierarchyCommand(copiedGroup, [copiedCube]), model)
+    expect(model.groups).toHaveLength(2)
+    expect(model.elements).toHaveLength(2)
+
+    history.undo(model)
+    expect(model.groups).toHaveLength(1)
+    expect(model.elements).toHaveLength(1)
+    history.redo(model)
+    expect(model.groups).toHaveLength(2)
+
+    history.execute(deleteGroupCommand(group, 0, [cube]), model)
+    expect(model.groups.find((entry) => entry.id === group.id)).toBeUndefined()
+    expect(model.elements.find((entry) => entry.id === cube.id)?.parentId).toBeUndefined()
+    history.undo(model)
+    expect(model.groups.find((entry) => entry.id === group.id)).toBeDefined()
+    expect(model.elements.find((entry) => entry.id === cube.id)?.parentId).toBe(group.id)
   })
 })

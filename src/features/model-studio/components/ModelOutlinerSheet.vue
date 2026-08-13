@@ -1,59 +1,123 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue'
+
 import AppIcon from '@/components/common/AppIcon.vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import StudioIcon from '@/components/common/StudioIcon.vue'
+import { getGroupChildren } from '@/core/model/modelHierarchy'
 import type { StudioModel } from '@/types/model'
 
-defineProps<{
+const props = defineProps<{
   open: boolean
   model: StudioModel
-  selectedElementId?: string
+  selectedNodeId?: string
   selectedReferenceId?: string
 }>()
 
 defineEmits<{
   close: []
-  selectElement: [id: string]
+  selectNode: [id: string]
   selectReference: [id: string]
-  renameElement: [id: string]
+  createGroup: []
+  renameNode: [id: string]
+  duplicateNode: [id: string]
+  showActions: [id: string]
   toggleElement: [id: string]
   deleteElement: [id: string]
+  toggleGroup: [id: string]
+  deleteGroup: [id: string]
   editReference: [id: string]
   toggleReference: [id: string]
+  toggleReferenceLock: [id: string]
   deleteReference: [id: string]
 }>()
+
+const expanded = ref(new Set<string>())
+
+watch(
+  () => props.model.groups.map((group) => group.id),
+  (ids) => {
+    const available = new Set(ids)
+    expanded.value = new Set([...expanded.value].filter((id) => available.has(id)))
+    if (!expanded.value.size && ids[0]) expanded.value.add(ids[0])
+  },
+  { immediate: true },
+)
+
+function toggleExpanded(id: string): void {
+  const next = new Set(expanded.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expanded.value = next
+}
+
+function rootElements(): StudioModel['elements'] {
+  return props.model.elements.filter((element) => !element.parentId)
+}
 </script>
 
 <template>
   <BottomSheet
     :open="open"
     title="Outliner"
-    :description="`${model.elements.length} cubes · ${model.references.length} references`"
+    :description="`${model.groups.length} groups · ${model.elements.length} cubes · ${model.references.length} references`"
     @close="$emit('close')"
   >
     <div class="outliner">
       <section>
-        <header><StudioIcon name="model" :size="19" /><h3>Model</h3></header>
-        <div v-if="model.elements.length" class="outliner-list">
+        <header>
+          <span><StudioIcon name="model" :size="19" /><h3>Model</h3></span>
+          <button type="button" class="new-group" @click="$emit('createGroup')"><AppIcon name="folder-plus" :size="18" />New Group</button>
+        </header>
+        <div v-if="model.elements.length || model.groups.length" class="outliner-list">
+          <template v-for="group in model.groups" :key="group.id">
+            <article
+              class="outliner-row outliner-row--group"
+              :class="{ 'outliner-row--selected': selectedNodeId === group.id }"
+            >
+              <button type="button" :aria-label="`${expanded.has(group.id) ? 'Collapse' : 'Expand'} ${group.name}`" @click="toggleExpanded(group.id)">
+                <AppIcon name="chevron-right" :size="19" :class="{ 'expand-icon--open': expanded.has(group.id) }" />
+              </button>
+              <button type="button" class="outliner-row__select" @click="$emit('selectNode', group.id)">
+                <AppIcon name="folder" :size="20" />
+                <span><strong>{{ group.name }}</strong><small>{{ getGroupChildren(model, group.id).length }} cubes</small></span>
+              </button>
+              <button type="button" :aria-label="`Duplicate ${group.name}`" @click="$emit('duplicateNode', group.id)"><AppIcon name="copy" :size="18" /></button>
+              <button type="button" :aria-label="`${group.visible ? 'Hide' : 'Show'} ${group.name}`" @click="$emit('toggleGroup', group.id)"><AppIcon :name="group.visible ? 'eye' : 'eye-off'" :size="18" /></button>
+              <button type="button" :aria-label="`${group.name} actions`" @click="$emit('showActions', group.id)"><AppIcon name="more-vertical" :size="18" /></button>
+            </article>
+
+            <article
+              v-for="element in (expanded.has(group.id) ? getGroupChildren(model, group.id) : [])"
+              :key="element.id"
+              class="outliner-row outliner-row--child"
+              :class="{ 'outliner-row--selected': selectedNodeId === element.id }"
+            >
+              <button type="button" class="outliner-row__select" @click="$emit('selectNode', element.id)">
+                <AppIcon name="box" :size="19" />
+                <span><strong>{{ element.name }}</strong><small>Cube · {{ group.name }}</small></span>
+              </button>
+              <button type="button" :aria-label="`Duplicate ${element.name}`" @click="$emit('duplicateNode', element.id)"><AppIcon name="copy" :size="18" /></button>
+              <button type="button" :aria-label="`${element.visible ? 'Hide' : 'Show'} ${element.name}`" @click="$emit('toggleElement', element.id)"><AppIcon :name="element.visible ? 'eye' : 'eye-off'" :size="18" /></button>
+              <button type="button" :aria-label="`${element.name} actions`" @click="$emit('showActions', element.id)"><AppIcon name="more-vertical" :size="18" /></button>
+            </article>
+          </template>
+
           <article
-            v-for="element in model.elements"
+            v-for="element in rootElements()"
             :key="element.id"
             class="outliner-row"
-            :class="{ 'outliner-row--selected': selectedElementId === element.id }"
+            :class="{ 'outliner-row--selected': selectedNodeId === element.id }"
           >
-            <button type="button" class="outliner-row__select" @click="$emit('selectElement', element.id)">
+            <button type="button" class="outliner-row__select" @click="$emit('selectNode', element.id)">
               <AppIcon name="box" :size="20" />
-              <span><strong>{{ element.name }}</strong><small>Cube</small></span>
+              <span><strong>{{ element.name }}</strong><small>Cube · Model Root</small></span>
             </button>
-            <button type="button" :aria-label="`Rename ${element.name}`" @click="$emit('renameElement', element.id)">
-              <AppIcon name="pencil" :size="18" />
-            </button>
+            <button type="button" :aria-label="`Duplicate ${element.name}`" @click="$emit('duplicateNode', element.id)"><AppIcon name="copy" :size="18" /></button>
             <button type="button" :aria-label="`${element.visible ? 'Hide' : 'Show'} ${element.name}`" @click="$emit('toggleElement', element.id)">
               <AppIcon :name="element.visible ? 'eye' : 'eye-off'" :size="18" />
             </button>
-            <button type="button" class="outliner-row__delete" :aria-label="`Delete ${element.name}`" @click="$emit('deleteElement', element.id)">
-              <AppIcon name="trash" :size="18" />
-            </button>
+            <button type="button" :aria-label="`${element.name} actions`" @click="$emit('showActions', element.id)"><AppIcon name="more-vertical" :size="18" /></button>
           </article>
         </div>
         <p v-else class="outliner-empty">No cubes yet. Use + Cube in the bottom toolbar.</p>
@@ -70,16 +134,16 @@ defineEmits<{
           >
             <button type="button" class="outliner-row__select" @click="$emit('selectReference', reference.id)">
               <AppIcon name="file" :size="20" />
-              <span><strong>{{ reference.name }}</strong><small>{{ reference.view }} reference</small></span>
+              <span><strong>{{ reference.name }}</strong><small>{{ reference.locked ? 'Locked' : 'Unlocked' }} · {{ reference.view }}</small></span>
             </button>
-            <button type="button" aria-label="Edit reference" @click="$emit('editReference', reference.id)">
-              <AppIcon name="sliders" :size="18" />
+            <button type="button" :aria-label="`${reference.locked ? 'Unlock' : 'Lock'} ${reference.name}`" @click="$emit('toggleReferenceLock', reference.id)">
+              <AppIcon :name="reference.locked ? 'lock' : 'unlock'" :size="18" />
             </button>
             <button type="button" :aria-label="`${reference.visible ? 'Hide' : 'Show'} ${reference.name}`" @click="$emit('toggleReference', reference.id)">
               <AppIcon :name="reference.visible ? 'eye' : 'eye-off'" :size="18" />
             </button>
-            <button type="button" class="outliner-row__delete" :aria-label="`Delete ${reference.name}`" @click="$emit('deleteReference', reference.id)">
-              <AppIcon name="trash" :size="18" />
+            <button type="button" aria-label="Edit reference" @click="$emit('editReference', reference.id)">
+              <AppIcon name="sliders" :size="18" />
             </button>
           </article>
         </div>
@@ -98,9 +162,24 @@ defineEmits<{
 .outliner section > header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
   margin-bottom: var(--space-2);
   color: var(--color-accent-strong);
+}
+
+.outliner section > header > span { display: flex; align-items: center; gap: var(--space-2); }
+
+.new-group {
+  min-height: var(--touch-target);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent-strong);
+  font-size: 0.7rem;
+  font-weight: 760;
 }
 
 .outliner h3 {
@@ -124,6 +203,10 @@ defineEmits<{
   overflow: hidden;
   background: var(--color-surface-raised);
 }
+
+.outliner-row--group { grid-template-columns: var(--touch-target) minmax(0, 1fr) repeat(3, var(--touch-target)); }
+.outliner-row--child { margin-left: 1rem; grid-template-columns: minmax(0, 1fr) repeat(3, var(--touch-target)); border-left-color: var(--color-accent); }
+.expand-icon--open { transform: rotate(90deg); }
 
 .outliner-row--selected {
   border-color: var(--color-accent);

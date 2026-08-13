@@ -2,11 +2,11 @@
 
 Addons Studio is a free and open-source, mobile-first web application for creating Minecraft Bedrock Edition add-ons. The long-term goal is a complete creative environment that works directly from a phone, tablet, or desktop browser without assuming a mouse or desktop filesystem.
 
-> **Current release:** Alpha `0.0.3` · Project Folders + Model Studio Foundation
+> **Current release:** Alpha `0.0.3.5` · Modeling Workflow Update
 
 Addons Studio is an independent community project and is not affiliated with Mojang Studios or Microsoft. Minecraft is a trademark of Microsoft Corporation.
 
-## What works in Alpha 0.0.3
+## What works in Alpha 0.0.3.5
 
 - First-launch welcome experience
 - Local project creation with validated namespaces
@@ -29,13 +29,16 @@ Addons Studio is an independent community project and is not affiliated with Moj
 - Formalized brand, semantic-color, spacing, radius, shadow, typography, and motion tokens
 - Refined Home, project cards, workspace modules, resource sheet, Settings, and empty states
 - Functional Models resource list with validated `geometry.namespace.name` identifiers
-- Lazy-loaded Three.js Model Studio with a perspective viewport, lighting, Bedrock-unit grid, origin axes, and touch camera controls
-- Multiple-cube creation, touch selection, finger-sized Move/Rotate/Resize gizmo pickers, and exact numeric transforms
-- Mobile outliner with select, rename, visibility, and delete actions
-- PNG/JPG front-reference planes with position, size, opacity, visibility, and safe local storage
-- Command-based cube undo/redo plus debounced model autosave and explicit save status
+- Lazy-loaded Three.js Model Studio with lighting, a Bedrock-unit green grid, origin axes, standard camera views, and touch navigation that remains available while modeling
+- One- and two-viewport layouts with independent views, active-panel feedback, temporary maximize, and a lower-power secondary renderer
+- Multiple-cube creation, touch selection, duplication, finger-sized custom Move/Rotate/Resize/Pivot gizmo pickers, exact numeric transforms, and configurable snapping
+- One-level model groups with safe hierarchy organization, whole-group transforms, visibility, duplication, and deletion that moves children to root
+- Animation-ready cube/group pivots with direct XYZ editing, Center, Reset, and Pivot to Origin actions
+- Mobile outliner with expandable groups, direct duplication, selection, visibility, lock state, and touch action menus
+- Locked-by-default PNG/JPG reference planes with position, size, opacity, six orientations, visibility, and safe local storage
+- Command-based hierarchy undo/redo plus debounced model autosave and explicit save status
 
-This release does **not** generate `.mcaddon` or `.mcpack` files. Model Studio is an internal-format foundation, not a complete Bedrock geometry exporter; bones, UV mapping, materials, texture painting, animation, particles, audio, code, and visual logic remain unimplemented and are not simulated.
+This release does **not** generate `.mcaddon` or `.mcpack` files. Model Studio remains an internal-format editor, not a complete Bedrock geometry exporter; bones, UV mapping, materials, texture painting, animation, particles, audio, code, and visual logic remain unimplemented and are not simulated. Three- and four-viewport layouts are also deliberately deferred until mobile performance is validated.
 
 ## Mobile-first principles
 

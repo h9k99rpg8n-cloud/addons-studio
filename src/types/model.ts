@@ -9,22 +9,62 @@ export interface StudioVector2 {
   y: number
 }
 
-export interface StudioCube {
+export type StudioMetadataValue =
+  | string
+  | number
+  | boolean
+  | null
+  | StudioMetadataValue[]
+  | { [key: string]: StudioMetadataValue }
+
+export interface StudioNodeBase {
   id: string
-  type: 'cube'
   name: string
+  visible: boolean
+  /** Absolute editor pivot in model space. Future bones can reuse this value. */
+  pivot: StudioVector3
+  /** Stable reset target retained while the node moves with its geometry. */
+  defaultPivot: StudioVector3
+  /** Optional parent group. Nested group editing is reserved for a later Alpha. */
+  parentId?: string
+  /** Version-tolerant product metadata copied by duplicate and project-copy flows. */
+  metadata?: Record<string, StudioMetadataValue>
+}
+
+export interface StudioCube {
+  id: StudioNodeBase['id']
+  type: 'cube'
+  name: StudioNodeBase['name']
   position: StudioVector3
   size: StudioVector3
   /** Euler rotation stored in degrees for a touch-friendly Bedrock workflow. */
   rotation: StudioVector3
-  visible: boolean
-  /** Reserved for the future bone hierarchy without changing stable element IDs. */
-  parentId?: string
+  visible: StudioNodeBase['visible']
+  pivot: StudioNodeBase['pivot']
+  defaultPivot: StudioNodeBase['defaultPivot']
+  parentId?: StudioNodeBase['parentId']
+  metadata?: StudioNodeBase['metadata']
+}
+
+export interface StudioGroup {
+  id: StudioNodeBase['id']
+  type: 'group'
+  name: StudioNodeBase['name']
+  /** Logical group handle position. Child geometry remains stored in model space. */
+  position: StudioVector3
+  rotation: StudioVector3
+  scale: StudioVector3
+  visible: StudioNodeBase['visible']
+  pivot: StudioNodeBase['pivot']
+  defaultPivot: StudioNodeBase['defaultPivot']
+  parentId?: StudioNodeBase['parentId']
+  metadata?: StudioNodeBase['metadata']
 }
 
 export type StudioModelElement = StudioCube
+export type StudioModelNode = StudioCube | StudioGroup
 
-export type StudioReferenceView = 'front' | 'side' | 'top'
+export type StudioReferenceView = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom'
 
 export interface StudioReferenceImage {
   id: string
@@ -35,6 +75,34 @@ export interface StudioReferenceImage {
   size: StudioVector2
   opacity: number
   visible: boolean
+  /** Locked references never participate in viewport picking. */
+  locked: boolean
+}
+
+export type StudioCameraView =
+  | 'perspective'
+  | 'isometric'
+  | 'front'
+  | 'back'
+  | 'left'
+  | 'right'
+  | 'top'
+  | 'bottom'
+
+export type StudioViewportLayout = 1 | 2
+
+export interface StudioSnappingSettings {
+  /** World-unit step. `null` means Off. */
+  transform: number | null
+  customTransform: number
+  /** Degree step. `null` means Off. */
+  rotation: number | null
+}
+
+export interface StudioEditorState {
+  snapping: StudioSnappingSettings
+  viewportLayout: StudioViewportLayout
+  viewportViews: StudioCameraView[]
 }
 
 export interface StudioModel {
@@ -43,7 +111,9 @@ export interface StudioModel {
   name: string
   identifier: string
   elements: StudioModelElement[]
+  groups: StudioGroup[]
   references: StudioReferenceImage[]
+  editor: StudioEditorState
   createdAt: number
   updatedAt: number
   schemaVersion: number
@@ -66,7 +136,7 @@ export interface CreateStudioModelInput {
   identifier: string
 }
 
-export type ModelTransformTool = 'select' | 'orbit' | 'move' | 'rotate' | 'scale'
+export type ModelTransformTool = 'select' | 'move' | 'rotate' | 'scale' | 'pivot'
 
 export interface StudioElementTransform {
   position: StudioVector3

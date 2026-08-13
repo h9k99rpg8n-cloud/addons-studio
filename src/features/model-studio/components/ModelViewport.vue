@@ -20,22 +20,35 @@ import type {
   ModelReferenceAsset,
   ModelTransformTool,
   StudioCube,
+  StudioCameraView,
   StudioModel,
-  StudioModelElement,
+  StudioModelNode,
 } from '@/types/model'
-import { cloneStudioCube } from '@/core/model/modelFactory'
+import {
+  buildPivotState,
+  buildNodeTransformState,
+  captureNodeTransform,
+  elementCenter,
+  getGroupChildren,
+  getStudioNode,
+  isNodeEffectivelyVisible,
+  requestedAxisTransform,
+  type StudioAxis,
+  type StudioHierarchyState,
+  type StudioNodeTransformSession,
+} from '@/core/model/modelHierarchy'
 
 const loadThree = () => import('three')
 type ThreeModule = Awaited<ReturnType<typeof loadThree>>
-type Axis = 'x' | 'y' | 'z'
+type Axis = StudioAxis
 
 interface DragState {
   pointerId: number
   axis: Axis
   startX: number
   startY: number
-  before: StudioCube
-  latest: StudioCube
+  session: StudioNodeTransformSession
+  latest: StudioHierarchyState
 }
 
 interface ReferenceMeshRecord {
@@ -48,16 +61,26 @@ interface ReferenceMeshRecord {
 const props = defineProps<{
   model: StudioModel
   assets: ModelReferenceAsset[]
-  selectedElementId?: string
+  selectedNodeId?: string
   selectedReferenceId?: string
   tool: ModelTransformTool
+  view: StudioCameraView
+  active?: boolean
+  lowPower?: boolean
+  maximized?: boolean
+  canMaximize?: boolean
+  transformSnap: number | null
+  rotationSnap: number | null
 }>()
 
 const emit = defineEmits<{
-  selectElement: [id?: string]
+  selectNode: [id?: string]
   selectReference: [id?: string]
-  previewElement: [element: StudioModelElement]
-  commitElement: [payload: { before: StudioModelElement; after: StudioModelElement; label: string }]
+  previewHierarchy: [state: StudioHierarchyState]
+  commitHierarchy: [payload: { before: StudioHierarchyState; after: StudioHierarchyState; label: string }]
+  activate: []
+  toggleMaximize: []
+  cameraNavigated: []
   error: [message: string]
 }>()
 
@@ -78,6 +101,7 @@ let cubeMaterial: MeshStandardMaterial | undefined
 let resizeObserver: ResizeObserver | undefined
 let drag: DragState | undefined
 let gizmoTool: ModelTransformTool | undefined
+let emptyPointer: { id: number; x: number; y: number } | undefined
 
 const cubeMeshes = new Map<string, Mesh<BoxGeometry, MeshStandardMaterial>>()
 const referenceMeshes = new Map<string, ReferenceMeshRecord>()
@@ -89,15 +113,35 @@ const axisColors: Record<Axis, number> = {
   z: 0x4f9ff5,
 }
 
-function selectedElement(): StudioCube | undefined {
-  return props.model.elements.find((element) => element.id === props.selectedElementId)
+function selectedNode(): StudioModelNode | undefined {
+  return getStudioNode(props.model, props.selectedNodeId)
 }
 
-function elementCenter(element: StudioCube): { x: number; y: number; z: number } {
+function nodeBounds(node: StudioModelNode): { center: { x: number; y: number; z: number }; size: { x: number; y: number; z: number } } {
+  if (node.type === 'cube') return { center: elementCenter(node), size: node.size }
+  const children = getGroupChildren(props.model, node.id)
+  if (!children.length) return { center: node.pivot, size: { x: 1, y: 1, z: 1 } }
+  const minimum = { x: Infinity, y: Infinity, z: Infinity }
+  const maximum = { x: -Infinity, y: -Infinity, z: -Infinity }
+  children.forEach((child) => {
+    minimum.x = Math.min(minimum.x, child.position.x)
+    minimum.y = Math.min(minimum.y, child.position.y)
+    minimum.z = Math.min(minimum.z, child.position.z)
+    maximum.x = Math.max(maximum.x, child.position.x + child.size.x)
+    maximum.y = Math.max(maximum.y, child.position.y + child.size.y)
+    maximum.z = Math.max(maximum.z, child.position.z + child.size.z)
+  })
   return {
-    x: element.position.x + element.size.x / 2,
-    y: element.position.y + element.size.y / 2,
-    z: element.position.z + element.size.z / 2,
+    center: {
+      x: (minimum.x + maximum.x) / 2,
+      y: (minimum.y + maximum.y) / 2,
+      z: (minimum.z + maximum.z) / 2,
+    },
+    size: {
+      x: Math.max(0.5, maximum.x - minimum.x),
+      y: Math.max(0.5, maximum.y - minimum.y),
+      z: Math.max(0.5, maximum.z - minimum.z),
+    },
   }
 }
 
@@ -120,13 +164,17 @@ function renderScene(): void {
   renderer.render(scene, camera)
 }
 
+function onControlsEnd(): void {
+  if (!drag) emit('cameraNavigated')
+}
+
 function resize(): void {
   if (!container.value || !renderer || !camera) return
   const width = Math.max(1, container.value.clientWidth)
   const height = Math.max(1, container.value.clientHeight)
   camera.aspect = width / height
   camera.updateProjectionMatrix()
-  renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 1.75))
+  renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, props.lowPower ? 1 : 1.75))
   renderer.setSize(width, height, false)
   renderScene()
 }
@@ -141,7 +189,7 @@ function applyElementToMesh(element: StudioCube, mesh: Mesh): void {
     three.MathUtils.degToRad(element.rotation.y),
     three.MathUtils.degToRad(element.rotation.z),
   )
-  mesh.visible = element.visible
+  mesh.visible = isNodeEffectivelyVisible(props.model, element)
 }
 
 function syncCubes(): void {
@@ -160,8 +208,8 @@ function syncCubes(): void {
     if (!mesh) {
       mesh = new three.Mesh(new three.BoxGeometry(1, 1, 1), cubeMaterial)
       mesh.userData.elementId = element.id
-      mesh.castShadow = true
-      mesh.receiveShadow = true
+      mesh.castShadow = !props.lowPower
+      mesh.receiveShadow = !props.lowPower
       scene.add(mesh)
       cubeMeshes.set(element.id, mesh)
     }
@@ -190,9 +238,13 @@ function applyReferenceTransform(id: string): void {
   record.mesh.position.set(reference.position.x, reference.position.y, reference.position.z)
   record.mesh.scale.set(reference.size.x, reference.size.y, 1)
   record.mesh.rotation.set(0, 0, 0)
-  if (reference.view === 'side') record.mesh.rotation.y = Math.PI / 2
+  if (reference.view === 'back') record.mesh.rotation.y = Math.PI
+  if (reference.view === 'left') record.mesh.rotation.y = -Math.PI / 2
+  if (reference.view === 'right') record.mesh.rotation.y = Math.PI / 2
   if (reference.view === 'top') record.mesh.rotation.x = -Math.PI / 2
+  if (reference.view === 'bottom') record.mesh.rotation.x = Math.PI / 2
   record.mesh.visible = reference.visible
+  record.mesh.userData.locked = reference.locked
   const material = record.mesh.material as MeshBasicMaterial
   material.opacity = reference.opacity
   material.needsUpdate = true
@@ -247,25 +299,29 @@ function syncReferences(): void {
 
 function syncSelection(): void {
   if (!selectionMesh || !gizmoGroup || !three) return
-  const element = selectedElement()
-  if (!element || !element.visible) {
+  const node = selectedNode()
+  if (!node || !node.visible || (node.type === 'cube' && !isNodeEffectivelyVisible(props.model, node))) {
     selectionMesh.visible = false
     gizmoGroup.visible = false
     renderScene()
     return
   }
 
-  const center = elementCenter(element)
+  const bounds = nodeBounds(node)
+  const center = bounds.center
   selectionMesh.visible = true
   selectionMesh.position.set(center.x, center.y, center.z)
-  selectionMesh.scale.set(element.size.x * 1.018, element.size.y * 1.018, element.size.z * 1.018)
-  selectionMesh.rotation.set(
-    three.MathUtils.degToRad(element.rotation.x),
-    three.MathUtils.degToRad(element.rotation.y),
-    three.MathUtils.degToRad(element.rotation.z),
-  )
-  gizmoGroup.position.set(center.x, center.y, center.z)
-  gizmoGroup.visible = props.tool === 'move' || props.tool === 'rotate' || props.tool === 'scale'
+  selectionMesh.scale.set(bounds.size.x * 1.018, bounds.size.y * 1.018, bounds.size.z * 1.018)
+  selectionMesh.rotation.set(0, 0, 0)
+  if (node.type === 'cube') {
+    selectionMesh.rotation.set(
+      three.MathUtils.degToRad(node.rotation.x),
+      three.MathUtils.degToRad(node.rotation.y),
+      three.MathUtils.degToRad(node.rotation.z),
+    )
+  }
+  gizmoGroup.position.set(node.pivot.x, node.pivot.y, node.pivot.z)
+  gizmoGroup.visible = props.tool !== 'select'
   if (gizmoGroup.visible && gizmoTool !== props.tool) rebuildGizmo()
   renderScene()
 }
@@ -334,6 +390,8 @@ function rebuildGizmo(): void {
     const endpoint =
       props.tool === 'move'
         ? new three.Mesh(new three.ConeGeometry(0.09, 0.22, 12), visibleMaterial)
+        : props.tool === 'pivot'
+          ? new three.Mesh(new three.OctahedronGeometry(0.13), new three.MeshBasicMaterial({ color: 0xf4cf58, depthTest: false }))
         : new three.Mesh(new three.BoxGeometry(0.15, 0.15, 0.15), visibleMaterial)
     setAxisPosition(endpoint, axis, 0.82)
     if (props.tool === 'move') orientCylinder(endpoint, axis)
@@ -375,14 +433,13 @@ function setRayFromPointer(event: PointerEvent): void {
 
 function projectedAxis(axis: Axis): { x: number; y: number } {
   if (!three || !camera || !renderer) return { x: 1, y: 0 }
-  const element = selectedElement()
-  if (!element) return { x: 1, y: 0 }
-  const center = elementCenter(element)
-  const origin = new three.Vector3(center.x, center.y, center.z).project(camera)
+  const node = selectedNode()
+  if (!node) return { x: 1, y: 0 }
+  const origin = new three.Vector3(node.pivot.x, node.pivot.y, node.pivot.z).project(camera)
   const end = new three.Vector3(
-    center.x + (axis === 'x' ? 1 : 0),
-    center.y + (axis === 'y' ? 1 : 0),
-    center.z + (axis === 'z' ? 1 : 0),
+    node.pivot.x + (axis === 'x' ? 1 : 0),
+    node.pivot.y + (axis === 'y' ? 1 : 0),
+    node.pivot.z + (axis === 'z' ? 1 : 0),
   ).project(camera)
   const width = renderer.domElement.clientWidth || 1
   const height = renderer.domElement.clientHeight || 1
@@ -392,39 +449,40 @@ function projectedAxis(axis: Axis): { x: number; y: number } {
   return length < 0.01 ? { x: 1, y: 0 } : { x: x / length, y: y / length }
 }
 
-function rounded(value: number, step = 0.1): number {
-  return Math.round(value / step) * step
-}
-
-function transformValueLabel(element: StudioCube, axis: Axis): string {
-  if (props.tool === 'rotate') return `${axis.toUpperCase()} ${element.rotation[axis].toFixed(1)}°`
+function transformValueLabel(node: StudioModelNode, axis: Axis): string {
+  if (props.tool === 'rotate') return `${axis.toUpperCase()} ${node.rotation[axis].toFixed(1)}°`
   if (props.tool === 'scale') {
+    if (node.type === 'group') return `Scale ${axis.toUpperCase()} ${node.scale[axis].toFixed(2)}`
     const dimension = axis === 'x' ? 'Width' : axis === 'y' ? 'Height' : 'Depth'
-    return `${dimension} ${element.size[axis].toFixed(2)}`
+    return `${dimension} ${node.size[axis].toFixed(2)}`
   }
-  return `${axis.toUpperCase()} ${element.position[axis].toFixed(2)}`
+  if (props.tool === 'pivot') return `Pivot ${axis.toUpperCase()} ${node.pivot[axis].toFixed(2)}`
+  return `${axis.toUpperCase()} ${node.position[axis].toFixed(2)}`
 }
 
 function onPointerDown(event: PointerEvent): void {
-  if (!raycaster || !camera || !renderer || props.tool === 'orbit') return
+  if (!raycaster || !camera || !renderer || event.isPrimary === false) return
+  emit('activate')
   setRayFromPointer(event)
 
-  if (props.tool === 'move' || props.tool === 'rotate' || props.tool === 'scale') {
+  if (props.tool !== 'select') {
     const hit = raycaster.intersectObjects(gizmoPickers, false)[0]
     const axis = hit?.object.userData.gizmoAxis as Axis | undefined
-    const element = selectedElement()
-    if (axis && element) {
+    const node = selectedNode()
+    const session = node ? captureNodeTransform(props.model, node.id) : undefined
+    if (axis && node && session) {
       event.preventDefault()
+      event.stopImmediatePropagation()
       renderer.domElement.setPointerCapture(event.pointerId)
       drag = {
         pointerId: event.pointerId,
         axis,
         startX: event.clientX,
         startY: event.clientY,
-        before: cloneStudioCube(element),
-        latest: cloneStudioCube(element),
+        session,
+        latest: session.before,
       }
-      liveTransform.value = transformValueLabel(element, axis)
+      liveTransform.value = transformValueLabel(node, axis)
       if (controls) controls.enabled = false
       return
     }
@@ -433,77 +491,126 @@ function onPointerDown(event: PointerEvent): void {
   const cubeHit = raycaster.intersectObjects([...cubeMeshes.values()], false)[0]
   const elementId = cubeHit?.object.userData.elementId as string | undefined
   if (elementId) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
     emit('selectReference', undefined)
-    emit('selectElement', elementId)
+    emit('selectNode', elementId)
     return
   }
 
   const referenceHit = raycaster.intersectObjects(
-    [...referenceMeshes.values()].map((entry) => entry.mesh),
+    [...referenceMeshes.values()]
+      .map((entry) => entry.mesh)
+      .filter((mesh) => mesh.userData.locked !== true),
     false,
   )[0]
   const referenceId = referenceHit?.object.userData.referenceId as string | undefined
   if (referenceId) {
-    emit('selectElement', undefined)
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    emit('selectNode', undefined)
     emit('selectReference', referenceId)
     return
   }
 
-  emit('selectElement', undefined)
-  emit('selectReference', undefined)
+  emptyPointer = { id: event.pointerId, x: event.clientX, y: event.clientY }
 }
 
 function onPointerMove(event: PointerEvent): void {
   if (!drag || drag.pointerId !== event.pointerId || !camera || !renderer) return
+  const currentDrag = drag
   event.preventDefault()
-  const dx = event.clientX - drag.startX
-  const dy = event.clientY - drag.startY
-  const latest = cloneStudioCube(drag.before)
-
+  const dx = event.clientX - currentDrag.startX
+  const dy = event.clientY - currentDrag.startY
+  let delta: number
   if (props.tool === 'rotate') {
-    latest.rotation[drag.axis] = rounded(drag.before.rotation[drag.axis] + (dx - dy) * 0.65, 0.5)
+    delta = (dx - dy) * 0.65
   } else {
-    const direction = projectedAxis(drag.axis)
+    const direction = projectedAxis(currentDrag.axis)
     const pixels = dx * direction.x + dy * direction.y
     const distance = camera.position.distanceTo(gizmoGroup?.position ?? camera.position)
     const worldPerPixel =
       (2 * distance * Math.tan((camera.fov * Math.PI) / 360)) /
       Math.max(1, renderer.domElement.clientHeight)
-    const delta = pixels * worldPerPixel
-    if (props.tool === 'move') {
-      latest.position[drag.axis] = rounded(drag.before.position[drag.axis] + delta)
-    } else {
-      latest.size[drag.axis] = Math.max(0.25, rounded(drag.before.size[drag.axis] + delta, 0.25))
-    }
+    delta = pixels * worldPerPixel
   }
 
-  drag.latest = latest
-  liveTransform.value = transformValueLabel(latest, drag.axis)
-  emit('previewElement', latest)
+  const requested = requestedAxisTransform(
+    currentDrag.session,
+    props.tool as Exclude<ModelTransformTool, 'select'>,
+    currentDrag.axis,
+    delta,
+    props.transformSnap,
+    props.rotationSnap,
+  )
+  const latest = props.tool === 'pivot'
+    ? buildPivotState(currentDrag.session, requested.pivot)
+    : buildNodeTransformState(currentDrag.session, requested)
+  currentDrag.latest = latest
+  const latestNode = latest.elements.find((entry) => entry.id === currentDrag.session.targetId)
+    ?? latest.groups.find((entry) => entry.id === currentDrag.session.targetId)
+  if (latestNode) liveTransform.value = transformValueLabel(latestNode, currentDrag.axis)
+  emit('previewHierarchy', latest)
 }
 
 function finishDrag(event: PointerEvent): void {
-  if (!drag || drag.pointerId !== event.pointerId) return
+  if (!drag || drag.pointerId !== event.pointerId) {
+    if (emptyPointer?.id === event.pointerId) {
+      const moved = Math.hypot(event.clientX - emptyPointer.x, event.clientY - emptyPointer.y)
+      if (moved < 8) {
+        emit('selectNode', undefined)
+        emit('selectReference', undefined)
+      }
+      emptyPointer = undefined
+    }
+    return
+  }
   const finished = drag
   drag = undefined
   if (renderer?.domElement.hasPointerCapture(event.pointerId)) {
     renderer.domElement.releasePointerCapture(event.pointerId)
   }
-  if (controls) controls.enabled = props.tool === 'orbit'
-  if (JSON.stringify(finished.before) === JSON.stringify(finished.latest)) return
+  if (controls) controls.enabled = true
+  if (JSON.stringify(finished.session.before) === JSON.stringify(finished.latest)) return
 
-  const labels: Record<Exclude<ModelTransformTool, 'select' | 'orbit'>, string> = {
-    move: 'Move cube',
-    rotate: 'Rotate cube',
-    scale: 'Resize cube',
+  const nodeLabel = finished.session.node.type === 'group' ? 'group' : 'cube'
+  const labels: Record<Exclude<ModelTransformTool, 'select'>, string> = {
+    move: `Move ${nodeLabel}`,
+    rotate: `Rotate ${nodeLabel}`,
+    scale: `Resize ${nodeLabel}`,
+    pivot: `Move ${nodeLabel} pivot`,
   }
-  if (props.tool === 'move' || props.tool === 'rotate' || props.tool === 'scale') {
-    emit('commitElement', {
-      before: finished.before,
-      after: finished.latest,
-      label: labels[props.tool],
-    })
+  if (props.tool === 'select') return
+  emit('commitHierarchy', {
+    before: finished.session.before,
+    after: finished.latest,
+    label: labels[props.tool],
+  })
+}
+
+function applyCameraView(view = props.view): void {
+  if (!camera || !controls) return
+  const target = selectedNode()?.pivot ?? { x: 8, y: 8, z: 8 }
+  controls.target.set(target.x, target.y, target.z)
+  const distance = 78
+  const positions: Record<StudioCameraView, [number, number, number]> = {
+    perspective: [distance, distance * 0.65, distance],
+    isometric: [distance, distance, distance],
+    front: [0, 0, distance],
+    back: [0, 0, -distance],
+    left: [-distance, 0, 0],
+    right: [distance, 0, 0],
+    top: [0, distance, 0.001],
+    bottom: [0, -distance, 0.001],
   }
+  const [x, y, z] = positions[view]
+  camera.up.set(0, 1, 0)
+  if (view === 'top') camera.up.set(0, 0, -1)
+  if (view === 'bottom') camera.up.set(0, 0, 1)
+  camera.position.set(target.x + x, target.y + y, target.z + z)
+  camera.lookAt(controls.target)
+  controls.update()
+  renderScene()
 }
 
 async function initialize(): Promise<void> {
@@ -520,12 +627,12 @@ async function initialize(): Promise<void> {
     camera.position.set(54, 42, 54)
 
     renderer = new three.WebGLRenderer({
-      antialias: true,
+      antialias: !props.lowPower,
       alpha: false,
-      powerPreference: 'high-performance',
+      powerPreference: props.lowPower ? 'low-power' : 'high-performance',
     })
     renderer.outputColorSpace = three.SRGBColorSpace
-    renderer.shadowMap.enabled = true
+    renderer.shadowMap.enabled = !props.lowPower
     renderer.shadowMap.type = three.PCFSoftShadowMap
     renderer.domElement.className = 'model-canvas'
     renderer.domElement.setAttribute('aria-label', 'Interactive 3D model viewport')
@@ -540,15 +647,16 @@ async function initialize(): Promise<void> {
     controls.maxDistance = 420
     controls.touches.ONE = three.TOUCH.ROTATE
     controls.touches.TWO = three.TOUCH.DOLLY_PAN
-    controls.enabled = props.tool === 'orbit'
+    controls.enabled = true
     controls.update()
     controls.addEventListener('change', renderScene)
+    controls.addEventListener('end', onControlsEnd)
 
     environmentGroup = new three.Group()
     environmentGroup.add(new three.HemisphereLight(0xd9efff, 0x253129, 1.45))
     const keyLight = new three.DirectionalLight(0xffffff, 2.1)
     keyLight.position.set(45, 70, 35)
-    keyLight.castShadow = true
+    keyLight.castShadow = !props.lowPower
     environmentGroup.add(keyLight)
 
     const minorGrid = new three.GridHelper(256, 64, 0x2b553b, 0x1c2b22)
@@ -561,11 +669,6 @@ async function initialize(): Promise<void> {
 
     const origin = new three.AxesHelper(12)
     environmentGroup.add(origin)
-    const originMarker = new three.Mesh(
-      new three.SphereGeometry(0.42, 16, 12),
-      new three.MeshBasicMaterial({ color: 0xf2c453 }),
-    )
-    environmentGroup.add(originMarker)
     scene.add(environmentGroup)
 
     cubeMaterial = new three.MeshStandardMaterial({
@@ -592,7 +695,7 @@ async function initialize(): Promise<void> {
     scene.add(gizmoGroup)
     raycaster = new three.Raycaster()
 
-    renderer.domElement.addEventListener('pointerdown', onPointerDown)
+    renderer.domElement.addEventListener('pointerdown', onPointerDown, { capture: true })
     renderer.domElement.addEventListener('pointermove', onPointerMove)
     renderer.domElement.addEventListener('pointerup', finishDrag)
     renderer.domElement.addEventListener('pointercancel', finishDrag)
@@ -602,6 +705,7 @@ async function initialize(): Promise<void> {
     syncCubes()
     syncReferences()
     resize()
+    applyCameraView()
   } catch (error) {
     webglError.value = '3D modeling is not available on this device or browser.'
     emit('error', webglError.value)
@@ -609,10 +713,10 @@ async function initialize(): Promise<void> {
   }
 }
 
-watch(() => props.model.elements, syncCubes, { deep: true })
+watch(() => [props.model.elements, props.model.groups] as const, syncCubes, { deep: true })
 watch(() => [props.model.references, props.assets] as const, syncReferences, { deep: true })
 watch(
-  () => props.selectedElementId,
+  () => props.selectedNodeId,
   () => {
     liveTransform.value = ''
     syncSelection()
@@ -622,22 +726,24 @@ watch(
   () => props.tool,
   () => {
     liveTransform.value = ''
-    if (controls) controls.enabled = props.tool === 'orbit'
     syncSelection()
   },
 )
+watch(() => props.view, (view) => applyCameraView(view))
+watch(() => props.lowPower, resize)
 
 onMounted(() => void initialize())
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   if (renderer) {
-    renderer.domElement.removeEventListener('pointerdown', onPointerDown)
+    renderer.domElement.removeEventListener('pointerdown', onPointerDown, { capture: true })
     renderer.domElement.removeEventListener('pointermove', onPointerMove)
     renderer.domElement.removeEventListener('pointerup', finishDrag)
     renderer.domElement.removeEventListener('pointercancel', finishDrag)
   }
   controls?.removeEventListener('change', renderScene)
+  controls?.removeEventListener('end', onControlsEnd)
   controls?.dispose()
   for (const id of [...referenceMeshes.keys()]) clearReferenceRecord(id)
   for (const mesh of cubeMeshes.values()) mesh.geometry.dispose()
@@ -655,7 +761,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="container" class="model-viewport" data-testid="model-viewport">
+  <div
+    ref="container"
+    class="model-viewport"
+    :class="{ 'model-viewport--active': active }"
+    data-testid="model-viewport"
+  >
     <div v-if="webglError" class="viewport-error" role="alert">
       <strong>3D unavailable</strong>
       <span>{{ webglError }}</span>
@@ -664,12 +775,23 @@ onBeforeUnmount(() => {
       <span><i class="axis-x" />X</span>
       <span><i class="axis-y" />Y</span>
       <span><i class="axis-z" />Z</span>
+      <b>{{ view }}</b>
     </div>
-    <div v-if="selectedElementId && tool !== 'orbit'" class="selection-label">
-      {{ model.elements.find((element) => element.id === selectedElementId)?.name }}
+    <button
+      v-if="canMaximize"
+      type="button"
+      class="viewport-maximize"
+      :aria-label="maximized ? 'Restore split view' : 'Maximize viewport'"
+      @pointerdown.stop
+      @click.stop="emit('toggleMaximize')"
+    >
+      {{ maximized ? 'Restore' : 'Max' }}
+    </button>
+    <div v-if="selectedNodeId" class="selection-label">
+      {{ selectedNode()?.name }}
     </div>
     <output v-if="liveTransform" class="transform-value" aria-live="polite">{{ liveTransform }}</output>
-    <div v-if="tool === 'orbit'" class="gesture-help">Drag to orbit · Pinch to zoom · Two fingers to pan</div>
+    <div v-else-if="active" class="gesture-help">Empty drag: orbit · Pinch: zoom · Two fingers: pan</div>
   </div>
 </template>
 
@@ -681,7 +803,10 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background: #0a0d10;
   isolation: isolate;
+  border: 1px solid transparent;
 }
+
+.model-viewport--active { border-color: #3ca967; }
 
 .model-viewport :deep(.model-canvas) {
   width: 100%;
@@ -726,6 +851,28 @@ onBeforeUnmount(() => {
   font-family: var(--font-mono);
   font-size: 0.62rem;
   pointer-events: none;
+}
+
+.viewport-hud b {
+  color: #7fdd9d;
+  font-size: inherit;
+  font-weight: 760;
+  text-transform: capitalize;
+}
+
+.viewport-maximize {
+  position: absolute;
+  z-index: 4;
+  top: 0.42rem;
+  right: 0.42rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 0.75rem;
+  background: rgb(5 8 7 / 0.78);
+  color: #dce4df;
+  font-size: 0.62rem;
+  font-weight: 760;
 }
 
 .viewport-hud span { display: flex; align-items: center; gap: 0.2rem; }

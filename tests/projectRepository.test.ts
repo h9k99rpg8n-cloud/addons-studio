@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { createStudioCube } from '@/core/model/modelFactory'
+import { createStudioCube, createStudioGroup } from '@/core/model/modelFactory'
 import { ModelRepository } from '@/core/model/modelRepository'
 import { DEFAULT_BEDROCK_VERSION } from '@/core/project/bedrockVersions'
 import { ProjectRepository } from '@/core/project/projectRepository'
@@ -76,7 +76,13 @@ describe('ProjectRepository', () => {
       name: 'Urban Block',
       identifier: 'geometry.rio_grande.urban_block',
     })
-    model.elements.push(createStudioCube())
+    const cube = createStudioCube()
+    cube.metadata = { futureMaterial: 'urban' }
+    const group = createStudioGroup(0, [cube])
+    group.metadata = { futureBone: true }
+    cube.parentId = group.id
+    model.groups.push(group)
+    model.elements.push(cube)
     model = await models.saveModel(model)
     model = (
       await models.addReferenceAsset(
@@ -96,6 +102,10 @@ describe('ProjectRepository', () => {
     })
     expect(copiedModels[0]?.id).not.toBe(model.id)
     expect(copiedModels[0]?.elements[0]?.id).not.toBe(model.elements[0]?.id)
+    expect(copiedModels[0]?.groups[0]?.id).not.toBe(model.groups[0]?.id)
+    expect(copiedModels[0]?.elements[0]?.parentId).toBe(copiedModels[0]?.groups[0]?.id)
+    expect(copiedModels[0]?.elements[0]?.metadata).toEqual(cube.metadata)
+    expect(copiedModels[0]?.groups[0]?.metadata).toEqual(group.metadata)
     expect(copiedAssets).toHaveLength(1)
     expect(copiedAssets[0]?.projectId).toBe(duplicate.id)
     expect(copiedModels[0]?.references[0]?.assetId).toBe(copiedAssets[0]?.id)

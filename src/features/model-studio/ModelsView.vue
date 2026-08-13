@@ -148,7 +148,7 @@ async function deleteModel(): Promise<void> {
       <section class="models-intro">
         <span class="icon-surface tone-sky"><StudioIcon name="model" :size="31" /></span>
         <div>
-          <p class="eyebrow">Model Studio Foundation</p>
+          <p class="eyebrow">Modeling Workflow</p>
           <h1>Cube-based Bedrock modeling</h1>
           <p>Create geometry locally with touch tools, exact numeric transforms, references, and autosave.</p>
         </div>

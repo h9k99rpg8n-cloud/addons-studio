@@ -220,7 +220,7 @@ async function remove(): Promise<void> {
   <AppDialog
     :open="deleteOpen"
     :title="`Delete “${project?.name ?? 'project'}”?`"
-    description="This cannot be undone in Alpha 0.0.3. Project data, models, references, and local recovery snapshots will be removed."
+    description="This cannot be undone. Project data, models, references, and local recovery snapshots will be removed."
     @close="deleteOpen = false"
   >
     <div class="delete-warning">

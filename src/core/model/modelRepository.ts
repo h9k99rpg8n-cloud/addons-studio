@@ -12,6 +12,7 @@ import {
   cloneStudioModel,
   cloneStudioReference,
   createEmptyStudioModel,
+  MODEL_SCHEMA_VERSION,
 } from './modelFactory'
 import { validateModelInput, validateStoredModel } from './modelValidation'
 
@@ -89,7 +90,7 @@ export class ModelRepository {
       projectId: existing.projectId,
       createdAt: existing.createdAt,
       updatedAt: Date.now(),
-      schemaVersion: existing.schemaVersion,
+      schemaVersion: MODEL_SCHEMA_VERSION,
       revision: existing.revision + 1,
     }
 
@@ -157,6 +158,7 @@ export class ModelRepository {
       size: { x: 24, y: 24 },
       opacity: 0.55,
       visible: true,
+      locked: true,
     }
 
     try {
@@ -242,7 +244,7 @@ export class ModelRepository {
       projectId: existing.projectId,
       createdAt: existing.createdAt,
       updatedAt: Date.now(),
-      schemaVersion: existing.schemaVersion,
+      schemaVersion: MODEL_SCHEMA_VERSION,
       revision: existing.revision + 1,
     }
   }

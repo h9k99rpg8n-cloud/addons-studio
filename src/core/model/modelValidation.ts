@@ -1,4 +1,4 @@
-import type { CreateStudioModelInput, StudioModel } from '@/types/model'
+import type { CreateStudioModelInput, StudioModel, StudioVector3 } from '@/types/model'
 
 export interface ModelValidationIssue {
   field: 'name' | 'identifier'
@@ -55,11 +55,58 @@ export function validateModelInput(
 
 export function validateStoredModel(model: StudioModel): ModelValidationIssue[] {
   const issues = validateModelInput(model)
+  const groupIds = new Set(model.groups.map((group) => group.id))
+  const nodeIds = new Set<string>()
   for (const element of model.elements) {
-    if (element.size.x <= 0 || element.size.y <= 0 || element.size.z <= 0) {
+    if (nodeIds.has(element.id)) {
+      issues.push({ field: 'name', message: 'Model node IDs must be unique.' })
+      break
+    }
+    nodeIds.add(element.id)
+    if (
+      !Number.isFinite(element.size.x)
+      || !Number.isFinite(element.size.y)
+      || !Number.isFinite(element.size.z)
+      || element.size.x <= 0
+      || element.size.y <= 0
+      || element.size.z <= 0
+    ) {
       issues.push({ field: 'name', message: 'Cube dimensions must be greater than zero.' })
+      break
+    }
+    if (![element.position, element.rotation, element.pivot, element.defaultPivot].every(isFiniteVector)) {
+      issues.push({ field: 'name', message: 'Cube transforms must contain finite numbers.' })
+      break
+    }
+    if (element.parentId && !groupIds.has(element.parentId)) {
+      issues.push({ field: 'name', message: 'Every grouped cube must reference an existing group.' })
+      break
+    }
+  }
+  for (const group of model.groups) {
+    if (nodeIds.has(group.id)) {
+      issues.push({ field: 'name', message: 'Model node IDs must be unique.' })
+      break
+    }
+    nodeIds.add(group.id)
+    if (group.parentId) {
+      issues.push({ field: 'name', message: 'Nested groups are not supported in this Alpha.' })
+      break
+    }
+    if (
+      ![group.position, group.rotation, group.scale, group.pivot, group.defaultPivot].every(isFiniteVector)
+    ) {
+      issues.push({ field: 'name', message: 'Group transforms must contain finite numbers.' })
+      break
+    }
+    if (group.scale.x <= 0 || group.scale.y <= 0 || group.scale.z <= 0) {
+      issues.push({ field: 'name', message: 'Group scale must be greater than zero.' })
       break
     }
   }
   return issues
+}
+
+function isFiniteVector(vector: StudioVector3): boolean {
+  return Number.isFinite(vector.x) && Number.isFinite(vector.y) && Number.isFinite(vector.z)
 }

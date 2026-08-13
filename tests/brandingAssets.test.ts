@@ -21,8 +21,11 @@ describe('release metadata and branding assets', () => {
       version: string
     }
 
-    expect(APP_VERSION).toBe(packageJson.version)
-    expect(APP_RELEASE_LABEL).toBe('Alpha 0.0.3')
+    // npm requires a three-part SemVer string; the product keeps the requested
+    // four-part Alpha display version on user-facing surfaces.
+    expect(packageJson.version).toBe('0.0.3-alpha.5')
+    expect(APP_VERSION).toBe('0.0.3.5')
+    expect(APP_RELEASE_LABEL).toBe('Alpha 0.0.3.5')
   })
 
   it.each([
