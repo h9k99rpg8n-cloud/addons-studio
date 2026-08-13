@@ -5,11 +5,15 @@ import {
   createElementCommand,
   createGroupCommand,
   createHierarchyCommand,
+  createNodesCommand,
   deleteElementCommand,
   deleteGroupCommand,
+  deleteSelectionCommand,
   ModelCommandHistory,
   updateElementCommand,
+  updateHierarchyCommand,
 } from '@/core/model/modelHistory'
+import { buildSelectionAxisMoveState, captureSelectionTransform, duplicateSelection } from '@/core/model/modelProductivity'
 import { createEmptyStudioModel, createStudioCube, createStudioGroup } from '@/core/model/modelFactory'
 
 describe('Model Studio command history', () => {
@@ -84,5 +88,37 @@ describe('Model Studio command history', () => {
     history.undo(model)
     expect(model.groups.find((entry) => entry.id === group.id)).toBeDefined()
     expect(model.elements.find((entry) => entry.id === cube.id)?.parentId).toBe(group.id)
+  })
+
+  it('treats multi-object transforms, duplication, and safe deletion as logical commands', () => {
+    const model = createEmptyStudioModel('project', 'Batch', 'geometry.project.batch')
+    const first = createStudioCube()
+    const second = createStudioCube(1)
+    second.position.x = 20
+    model.elements.push(first, second)
+    const history = new ModelCommandHistory()
+
+    const session = captureSelectionTransform(model, [first.id, second.id])!
+    const moved = buildSelectionAxisMoveState(session, 'x', 3, 1, 'global')
+    history.execute(updateHierarchyCommand(session.before, moved, 'Move selection'), model)
+    expect(model.elements.map((cube) => cube.position.x)).toEqual([3, 23])
+    history.undo(model)
+    expect(model.elements.map((cube) => cube.position.x)).toEqual([0, 20])
+    history.redo(model)
+    expect(model.elements.map((cube) => cube.position.x)).toEqual([3, 23])
+
+    const duplicated = duplicateSelection(model, [first.id, second.id])
+    history.execute(createNodesCommand(duplicated.elements, duplicated.groups, 'Duplicate selection'), model)
+    expect(model.elements).toHaveLength(4)
+    history.undo(model)
+    expect(model.elements).toHaveLength(2)
+    history.redo(model)
+    expect(model.elements).toHaveLength(4)
+
+    const deletion = deleteSelectionCommand(model, duplicated.selectedIds)!
+    history.execute(deletion, model)
+    expect(model.elements).toHaveLength(2)
+    history.undo(model)
+    expect(model.elements).toHaveLength(4)
   })
 })

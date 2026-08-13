@@ -4,13 +4,28 @@ import type {
   StudioGroup,
   StudioModel,
   StudioModelNode,
+  StudioResizeDirection,
+  StudioTransformSpace,
   StudioVector3,
 } from '@/types/model'
 import { createId } from '@/utils/createId'
 
 import { cloneStudioCube, cloneStudioGroup } from './modelFactory'
+import {
+  addVector,
+  axisVectorForSpace,
+  mirrorEuler,
+  multiplyVector,
+  rotateEulerAroundAxis,
+  rotateEulerInSpace,
+  rotatePointAroundAxis,
+  rotatePointEuler,
+  rotateVectorEuler,
+  subtractVector,
+  type StudioAxis,
+} from './modelMath'
 
-export type StudioAxis = 'x' | 'y' | 'z'
+export type { StudioAxis } from './modelMath'
 
 export interface StudioHierarchyState {
   elements: StudioCube[]
@@ -20,8 +35,21 @@ export interface StudioHierarchyState {
 export interface StudioNodeTransformSession {
   targetId: string
   node: StudioModelNode
+  parentRotation: StudioVector3
   before: StudioHierarchyState
 }
+
+export interface StudioNodeTransformOptions {
+  operation?: 'generic' | 'move' | 'rotate' | 'scale'
+  axis?: StudioAxis
+  delta?: number
+  resizeDirection?: StudioResizeDirection
+  transformSpace?: StudioTransformSpace
+}
+
+const ZERO_ROTATION: StudioVector3 = { x: 0, y: 0, z: 0 }
+const MIN_CUBE_SIZE = 0.25
+const MIN_GROUP_SCALE = 0.05
 
 export function elementCenter(element: StudioCube): StudioVector3 {
   return {
@@ -47,8 +75,19 @@ export function isNodeEffectivelyVisible(model: StudioModel, element: StudioCube
   return model.groups.find((group) => group.id === element.parentId)?.visible !== false
 }
 
-export function groupBoundsCenter(elements: StudioCube[]): StudioVector3 {
-  if (!elements.length) return { x: 0, y: 0, z: 0 }
+export function isNodeEffectivelyLocked(model: StudioModel, node: StudioModelNode): boolean {
+  if (node.locked) return true
+  if (node.type === 'group' || !node.parentId) return false
+  return model.groups.find((group) => group.id === node.parentId)?.locked === true
+}
+
+export function hierarchyBounds(elements: StudioCube[]): {
+  minimum: StudioVector3
+  maximum: StudioVector3
+  center: StudioVector3
+  size: StudioVector3
+} | undefined {
+  if (!elements.length) return undefined
   const minimum = { x: Infinity, y: Infinity, z: Infinity }
   const maximum = { x: -Infinity, y: -Infinity, z: -Infinity }
   for (const element of elements) {
@@ -59,11 +98,25 @@ export function groupBoundsCenter(elements: StudioCube[]): StudioVector3 {
     maximum.y = Math.max(maximum.y, element.position.y + element.size.y)
     maximum.z = Math.max(maximum.z, element.position.z + element.size.z)
   }
-  return {
+  const center = {
     x: (minimum.x + maximum.x) / 2,
     y: (minimum.y + maximum.y) / 2,
     z: (minimum.z + maximum.z) / 2,
   }
+  return {
+    minimum,
+    maximum,
+    center,
+    size: {
+      x: maximum.x - minimum.x,
+      y: maximum.y - minimum.y,
+      z: maximum.z - minimum.z,
+    },
+  }
+}
+
+export function groupBoundsCenter(elements: StudioCube[]): StudioVector3 {
+  return hierarchyBounds(elements)?.center ?? { x: 0, y: 0, z: 0 }
 }
 
 export function nodePivotCenter(model: StudioModel, node: StudioModelNode): StudioVector3 {
@@ -113,11 +166,15 @@ export function captureNodeTransform(
 ): StudioNodeTransformSession | undefined {
   const node = getStudioNode(model, nodeId)
   if (!node) return undefined
+  const parentRotation = node.type === 'cube' && node.parentId
+    ? model.groups.find((group) => group.id === node.parentId)?.rotation ?? ZERO_ROTATION
+    : ZERO_ROTATION
   if (node.type === 'cube') {
     const cube = cloneStudioCube(node)
     return {
       targetId: node.id,
       node: cube,
+      parentRotation: { ...parentRotation },
       before: { elements: [cloneStudioCube(cube)], groups: [] },
     }
   }
@@ -125,6 +182,7 @@ export function captureNodeTransform(
   return {
     targetId: node.id,
     node: group,
+    parentRotation: { ...ZERO_ROTATION },
     before: {
       elements: getGroupChildren(model, node.id).map(cloneStudioCube),
       groups: [cloneStudioGroup(group)],
@@ -132,150 +190,260 @@ export function captureNodeTransform(
   }
 }
 
-function rotatePoint(point: StudioVector3, pivot: StudioVector3, rotation: StudioVector3): StudioVector3 {
-  let x = point.x - pivot.x
-  let y = point.y - pivot.y
-  let z = point.z - pivot.z
-
-  const rx = rotation.x * Math.PI / 180
-  const ry = rotation.y * Math.PI / 180
-  const rz = rotation.z * Math.PI / 180
-
-  if (rx) {
-    const nextY = y * Math.cos(rx) - z * Math.sin(rx)
-    z = y * Math.sin(rx) + z * Math.cos(rx)
-    y = nextY
+function inferOperation(
+  before: StudioModelNode,
+  requested: StudioModelNode,
+): StudioNodeTransformOptions['operation'] {
+  if (before.type !== requested.type) return 'generic'
+  if (before.type === 'cube' && requested.type === 'cube') {
+    if (JSON.stringify(before.size) !== JSON.stringify(requested.size)) return 'scale'
+  } else if (before.type === 'group' && requested.type === 'group') {
+    if (JSON.stringify(before.scale) !== JSON.stringify(requested.scale)) return 'scale'
   }
-  if (ry) {
-    const nextX = x * Math.cos(ry) + z * Math.sin(ry)
-    z = -x * Math.sin(ry) + z * Math.cos(ry)
-    x = nextX
-  }
-  if (rz) {
-    const nextX = x * Math.cos(rz) - y * Math.sin(rz)
-    y = x * Math.sin(rz) + y * Math.cos(rz)
-    x = nextX
-  }
-
-  return { x: x + pivot.x, y: y + pivot.y, z: z + pivot.z }
+  if (JSON.stringify(before.rotation) !== JSON.stringify(requested.rotation)) return 'rotate'
+  if (JSON.stringify(before.position) !== JSON.stringify(requested.position)) return 'move'
+  return 'generic'
 }
 
-function addVector(target: StudioVector3, delta: StudioVector3): StudioVector3 {
-  return { x: target.x + delta.x, y: target.y + delta.y, z: target.z + delta.z }
-}
-
-function subtractVector(after: StudioVector3, before: StudioVector3): StudioVector3 {
-  return { x: after.x - before.x, y: after.y - before.y, z: after.z - before.z }
-}
-
-function scalePoint(point: StudioVector3, pivot: StudioVector3, scale: StudioVector3): StudioVector3 {
-  return {
-    x: pivot.x + (point.x - pivot.x) * scale.x,
-    y: pivot.y + (point.y - pivot.y) * scale.y,
-    z: pivot.z + (point.z - pivot.z) * scale.z,
-  }
-}
-
-function transformedCube(
+function resizedCube(
   source: StudioCube,
-  translation: StudioVector3,
-  rotation: StudioVector3,
-  scale: StudioVector3,
-  groupPivot: StudioVector3,
+  requested: StudioCube,
+  session: StudioNodeTransformSession,
+  options: StudioNodeTransformOptions,
 ): StudioCube {
   const cube = cloneStudioCube(source)
-  const movedPivot = addVector(groupPivot, translation)
-  let center = addVector(elementCenter(source), translation)
-  let pivot = addVector(source.pivot, translation)
-  let defaultPivot = addVector(source.defaultPivot, translation)
+  cube.name = requested.name
+  cube.visible = requested.visible
+  cube.locked = requested.locked
+  cube.parentId = requested.parentId
+  cube.metadata = requested.metadata
+  const direction = options.resizeDirection ?? 'symmetric'
+  const space = options.transformSpace ?? 'global'
+  const axes: StudioAxis[] = options.axis ? [options.axis] : ['x', 'y', 'z']
 
-  center = scalePoint(center, movedPivot, scale)
-  pivot = scalePoint(pivot, movedPivot, scale)
-  defaultPivot = scalePoint(defaultPivot, movedPivot, scale)
-  cube.size = {
-    x: Math.max(0.25, source.size.x * Math.abs(scale.x)),
-    y: Math.max(0.25, source.size.y * Math.abs(scale.y)),
-    z: Math.max(0.25, source.size.z * Math.abs(scale.z)),
+  for (const axis of axes) {
+    const nextSize = Math.max(MIN_CUBE_SIZE, requested.size[axis])
+    const sizeDelta = nextSize - cube.size[axis]
+    if (Math.abs(sizeDelta) < 1e-9) continue
+    const oldCenter = elementCenter(cube)
+    const basis = axisVectorForSpace(source, session.parentRotation, space, axis)
+    const directionFactor = direction === 'positive' ? 0.5 : direction === 'negative' ? -0.5 : 0
+    const centerShift = multiplyVector(basis, sizeDelta * directionFactor)
+    const newCenter = addVector(oldCenter, centerShift)
+    cube.size[axis] = nextSize
+    cube.position = {
+      x: newCenter.x - cube.size.x / 2,
+      y: newCenter.y - cube.size.y / 2,
+      z: newCenter.z - cube.size.z / 2,
+    }
+    cube.defaultPivot = addVector(cube.defaultPivot, centerShift)
   }
-
-  center = rotatePoint(center, movedPivot, rotation)
-  pivot = rotatePoint(pivot, movedPivot, rotation)
-  defaultPivot = rotatePoint(defaultPivot, movedPivot, rotation)
-  cube.position = {
-    x: center.x - cube.size.x / 2,
-    y: center.y - cube.size.y / 2,
-    z: center.z - cube.size.z / 2,
-  }
-  cube.rotation = addVector(source.rotation, rotation)
-  cube.pivot = pivot
-  cube.defaultPivot = defaultPivot
+  // A custom pivot is an anchor and must never be stretched or moved by Resize.
+  cube.pivot = { ...source.pivot }
   return cube
 }
 
 function buildCubeTransform(
   session: StudioNodeTransformSession,
   requested: StudioCube,
+  options: StudioNodeTransformOptions,
 ): StudioHierarchyState {
   const before = session.before.elements[0]!
+  const operation = options.operation ?? inferOperation(before, requested)
+  if (operation === 'scale') {
+    return { elements: [resizedCube(before, requested, session, options)], groups: [] }
+  }
+
   const after = cloneStudioCube(requested)
-  const translation = subtractVector(after.position, before.position)
-  const rotation = subtractVector(after.rotation, before.rotation)
-  const movedPivot = addVector(before.pivot, translation)
-  const sizeRatio = {
-    x: after.size.x / Math.max(0.0001, before.size.x),
-    y: after.size.y / Math.max(0.0001, before.size.y),
-    z: after.size.z / Math.max(0.0001, before.size.z),
+  if (operation === 'move') {
+    const translation = subtractVector(after.position, before.position)
+    after.pivot = addVector(before.pivot, translation)
+    after.defaultPivot = addVector(before.defaultPivot, translation)
+  } else if (operation === 'rotate') {
+    const axis = options.axis
+    const delta = options.delta
+    let center: StudioVector3
+    if (axis && Number.isFinite(delta)) {
+      const basis = axisVectorForSpace(
+        before,
+        session.parentRotation,
+        options.transformSpace ?? 'global',
+        axis,
+      )
+      center = rotatePointAroundAxis(elementCenter(before), before.pivot, basis, delta!)
+      after.defaultPivot = rotatePointAroundAxis(before.defaultPivot, before.pivot, basis, delta!)
+    } else {
+      const rotationDelta = subtractVector(after.rotation, before.rotation)
+      center = rotatePointEuler(elementCenter(before), before.pivot, rotationDelta)
+      after.defaultPivot = rotatePointEuler(before.defaultPivot, before.pivot, rotationDelta)
+    }
+    after.position = {
+      x: center.x - after.size.x / 2,
+      y: center.y - after.size.y / 2,
+      z: center.z - after.size.z / 2,
+    }
+    after.pivot = { ...before.pivot }
   }
-  let movedDefaultPivot = {
-    x: after.position.x + (before.defaultPivot.x - before.position.x) * sizeRatio.x,
-    y: after.position.y + (before.defaultPivot.y - before.position.y) * sizeRatio.y,
-    z: after.position.z + (before.defaultPivot.z - before.position.z) * sizeRatio.z,
-  }
-  let center = elementCenter(after)
-  center = rotatePoint(center, movedPivot, rotation)
-  movedDefaultPivot = rotatePoint(movedDefaultPivot, movedPivot, rotation)
-  after.position = {
-    x: center.x - after.size.x / 2,
-    y: center.y - after.size.y / 2,
-    z: center.z - after.size.z / 2,
-  }
-  after.pivot = movedPivot
-  after.defaultPivot = movedDefaultPivot
   return { elements: [after], groups: [] }
+}
+
+function translateCube(source: StudioCube, translation: StudioVector3): StudioCube {
+  const cube = cloneStudioCube(source)
+  cube.position = addVector(cube.position, translation)
+  cube.pivot = addVector(cube.pivot, translation)
+  cube.defaultPivot = addVector(cube.defaultPivot, translation)
+  return cube
+}
+
+function projectedElementBounds(
+  elements: StudioCube[],
+  basis: StudioVector3,
+): { minimum: number; maximum: number; extent: number } | undefined {
+  if (!elements.length) return undefined
+  let minimum = Infinity
+  let maximum = -Infinity
+  for (const cube of elements) {
+    const center = elementCenter(cube)
+    const projection = center.x * basis.x + center.y * basis.y + center.z * basis.z
+    const localAxes = (['x', 'y', 'z'] as const).map((axis) =>
+      rotateVectorEuler(
+        { x: axis === 'x' ? 1 : 0, y: axis === 'y' ? 1 : 0, z: axis === 'z' ? 1 : 0 },
+        cube.rotation,
+      ),
+    )
+    const radius = localAxes.reduce((sum, localAxis, index) => {
+      const sizeAxis = (['x', 'y', 'z'] as const)[index]!
+      const alignment = Math.abs(
+        localAxis.x * basis.x + localAxis.y * basis.y + localAxis.z * basis.z,
+      )
+      return sum + alignment * cube.size[sizeAxis] / 2
+    }, 0)
+    minimum = Math.min(minimum, projection - radius)
+    maximum = Math.max(maximum, projection + radius)
+  }
+  return { minimum, maximum, extent: maximum - minimum }
+}
+
+function resizeGroup(
+  session: StudioNodeTransformSession,
+  requested: StudioGroup,
+  options: StudioNodeTransformOptions,
+): StudioHierarchyState {
+  const before = session.before.groups[0]!
+  const after = cloneStudioGroup(requested)
+  const direction = options.resizeDirection ?? 'symmetric'
+  const space = options.transformSpace ?? 'global'
+  const axes: StudioAxis[] = options.axis ? [options.axis] : ['x', 'y', 'z']
+  let elements = session.before.elements.map(cloneStudioCube)
+  const oldCenter = groupBoundsCenter(elements)
+
+  for (const axis of axes) {
+    const factor = after.scale[axis] / Math.max(0.0001, before.scale[axis])
+    if (!Number.isFinite(factor) || Math.abs(factor - 1) < 1e-9) continue
+    const basis = axisVectorForSpace(before, session.parentRotation, space, axis)
+    const projected = projectedElementBounds(elements, basis)
+    const minimum = projected?.minimum ?? 0
+    const maximum = projected?.maximum ?? 0
+    const anchorProjection = direction === 'positive'
+      ? minimum
+      : direction === 'negative'
+        ? maximum
+        : (minimum + maximum) / 2
+    const anchor = multiplyVector(basis, anchorProjection)
+
+    elements = elements.map((source) => {
+      const cube = cloneStudioCube(source)
+      const scalePoint = (point: StudioVector3) => {
+        const relative = subtractVector(point, anchor)
+        const projection = relative.x * basis.x + relative.y * basis.y + relative.z * basis.z
+        return addVector(point, multiplyVector(basis, projection * (factor - 1)))
+      }
+      const center = scalePoint(elementCenter(source))
+      cube.pivot = scalePoint(source.pivot)
+      cube.defaultPivot = scalePoint(source.defaultPivot)
+      cube.size[axis] = Math.max(MIN_CUBE_SIZE, source.size[axis] * Math.abs(factor))
+      cube.position = {
+        x: center.x - cube.size.x / 2,
+        y: center.y - cube.size.y / 2,
+        z: center.z - cube.size.z / 2,
+      }
+      return cube
+    })
+  }
+
+  const newCenter = groupBoundsCenter(elements)
+  const centerShift = subtractVector(newCenter, oldCenter)
+  after.position = addVector(before.position, centerShift)
+  after.pivot = { ...before.pivot }
+  after.defaultPivot = addVector(before.defaultPivot, centerShift)
+  return { elements, groups: [after] }
 }
 
 function buildGroupTransform(
   session: StudioNodeTransformSession,
   requested: StudioGroup,
+  options: StudioNodeTransformOptions,
 ): StudioHierarchyState {
   const before = session.before.groups[0]!
+  const operation = options.operation ?? inferOperation(before, requested)
+  if (operation === 'scale') return resizeGroup(session, requested, options)
+
   const after = cloneStudioGroup(requested)
-  const translation = subtractVector(after.position, before.position)
-  const rotation = subtractVector(after.rotation, before.rotation)
-  const scale = {
-    x: after.scale.x / Math.max(0.0001, before.scale.x),
-    y: after.scale.y / Math.max(0.0001, before.scale.y),
-    z: after.scale.z / Math.max(0.0001, before.scale.z),
+  if (operation === 'move') {
+    const translation = subtractVector(after.position, before.position)
+    after.pivot = addVector(before.pivot, translation)
+    after.defaultPivot = addVector(before.defaultPivot, translation)
+    return {
+      elements: session.before.elements.map((element) => translateCube(element, translation)),
+      groups: [after],
+    }
   }
-  after.pivot = addVector(before.pivot, translation)
-  let defaultPivot = addVector(before.defaultPivot, translation)
-  defaultPivot = scalePoint(defaultPivot, after.pivot, scale)
-  after.defaultPivot = rotatePoint(defaultPivot, after.pivot, rotation)
-  return {
-    elements: session.before.elements.map((element) =>
-      transformedCube(element, translation, rotation, scale, before.pivot),
-    ),
-    groups: [after],
+
+  if (operation === 'rotate') {
+    const axis = options.axis
+    const delta = options.delta
+    const rotationDelta = subtractVector(after.rotation, before.rotation)
+    const basis = axis
+      ? axisVectorForSpace(before, session.parentRotation, options.transformSpace ?? 'global', axis)
+      : undefined
+    const rotatePoint = (point: StudioVector3) =>
+      basis && Number.isFinite(delta)
+        ? rotatePointAroundAxis(point, before.pivot, basis, delta!)
+        : rotatePointEuler(point, before.pivot, rotationDelta)
+    return {
+      elements: session.before.elements.map((source) => {
+        const cube = cloneStudioCube(source)
+        const center = rotatePoint(elementCenter(source))
+        cube.position = {
+          x: center.x - cube.size.x / 2,
+          y: center.y - cube.size.y / 2,
+          z: center.z - cube.size.z / 2,
+        }
+        cube.pivot = rotatePoint(source.pivot)
+        cube.defaultPivot = rotatePoint(source.defaultPivot)
+        cube.rotation = basis && axis && Number.isFinite(delta)
+          ? rotateEulerAroundAxis(source.rotation, basis, delta!)
+          : addVector(source.rotation, rotationDelta)
+        return cube
+      }),
+      groups: [{
+        ...after,
+        pivot: { ...before.pivot },
+        defaultPivot: rotatePoint(before.defaultPivot),
+      }],
+    }
   }
+  return { elements: session.before.elements.map(cloneStudioCube), groups: [after] }
 }
 
 export function buildNodeTransformState(
   session: StudioNodeTransformSession,
   requested: StudioModelNode,
+  options: StudioNodeTransformOptions = {},
 ): StudioHierarchyState {
   return requested.type === 'cube'
-    ? buildCubeTransform(session, requested)
-    : buildGroupTransform(session, requested)
+    ? buildCubeTransform(session, requested, options)
+    : buildGroupTransform(session, requested, options)
 }
 
 export function buildPivotState(
@@ -308,6 +476,22 @@ export function snapValue(value: number, step: number | null): number {
   return Math.round((value + Number.EPSILON) / step) * step
 }
 
+export function sanitizeGestureDelta(
+  delta: number,
+  tool: Exclude<ModelTransformTool, 'select'>,
+  initialExtent: number,
+  cameraDistance: number,
+): number {
+  if (!Number.isFinite(delta)) return 0
+  if (tool === 'rotate') return Math.max(-1440, Math.min(1440, delta))
+  const safeExtent = Math.max(MIN_CUBE_SIZE, Math.abs(initialExtent))
+  const safeDistance = Number.isFinite(cameraDistance) ? Math.max(1, cameraDistance) : 1
+  const limit = tool === 'scale'
+    ? Math.max(32, safeExtent * 4, Math.min(128, safeDistance))
+    : Math.max(512, safeExtent * 64, safeDistance * 8)
+  return Math.max(-limit, Math.min(limit, delta))
+}
+
 export function requestedAxisTransform(
   session: StudioNodeTransformSession,
   tool: Exclude<ModelTransformTool, 'select'>,
@@ -315,23 +499,75 @@ export function requestedAxisTransform(
   delta: number,
   transformSnap: number | null,
   rotationSnap: number | null,
+  options: Pick<StudioNodeTransformOptions, 'transformSpace'> = {},
 ): StudioModelNode {
   const requested = session.node.type === 'cube'
     ? cloneStudioCube(session.node)
     : cloneStudioGroup(session.node)
+  const space = options.transformSpace ?? 'global'
+  const basis = axisVectorForSpace(requested, session.parentRotation, space, axis)
 
   if (tool === 'pivot') {
-    requested.pivot[axis] = snapValue(requested.pivot[axis] + delta, transformSnap)
+    const snappedDelta = snapValue(delta, transformSnap)
+    requested.pivot = addVector(requested.pivot, multiplyVector(basis, snappedDelta))
     return requested
   }
   if (tool === 'move') {
-    requested.position[axis] = snapValue(requested.position[axis] + delta, transformSnap)
+    const snappedDelta = snapValue(delta, transformSnap)
+    requested.position = addVector(requested.position, multiplyVector(basis, snappedDelta))
   } else if (tool === 'rotate') {
-    requested.rotation[axis] = snapValue(requested.rotation[axis] + delta, rotationSnap)
+    const snappedDelta = snapValue(delta, rotationSnap)
+    requested.rotation = rotateEulerInSpace(
+      requested.rotation,
+      session.parentRotation,
+      space,
+      axis,
+      snappedDelta,
+    )
   } else if (requested.type === 'cube') {
-    requested.size[axis] = Math.max(0.25, snapValue(requested.size[axis] + delta, transformSnap))
+    requested.size[axis] = Math.max(
+      MIN_CUBE_SIZE,
+      snapValue(requested.size[axis] + delta, transformSnap),
+    )
   } else {
-    requested.scale[axis] = Math.max(0.05, snapValue(requested.scale[axis] + delta, transformSnap))
+    const projected = projectedElementBounds(session.before.elements, basis)
+    const extent = Math.max(MIN_CUBE_SIZE, projected?.extent ?? 1)
+    requested.scale[axis] = Math.max(
+      MIN_GROUP_SCALE,
+      snapValue(requested.scale[axis] + delta / extent, transformSnap),
+    )
   }
   return requested
+}
+
+export function buildAxisTransformState(
+  session: StudioNodeTransformSession,
+  tool: Exclude<ModelTransformTool, 'select'>,
+  axis: StudioAxis,
+  delta: number,
+  transformSnap: number | null,
+  rotationSnap: number | null,
+  options: Pick<StudioNodeTransformOptions, 'resizeDirection' | 'transformSpace'> = {},
+): StudioHierarchyState {
+  const requested = requestedAxisTransform(
+    session,
+    tool,
+    axis,
+    delta,
+    transformSnap,
+    rotationSnap,
+    options,
+  )
+  if (tool === 'pivot') return buildPivotState(session, requested.pivot)
+  return buildNodeTransformState(session, requested, {
+    operation: tool === 'scale' ? 'scale' : tool,
+    axis,
+    delta: tool === 'rotate' ? snapValue(delta, rotationSnap) : delta,
+    resizeDirection: options.resizeDirection,
+    transformSpace: options.transformSpace,
+  })
+}
+
+export function mirroredRotation(rotation: StudioVector3, axis: StudioAxis): StudioVector3 {
+  return mirrorEuler(rotation, axis)
 }

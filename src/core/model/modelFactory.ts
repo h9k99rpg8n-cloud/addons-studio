@@ -10,7 +10,7 @@ import type {
 } from '@/types/model'
 import { createId } from '@/utils/createId'
 
-export const MODEL_SCHEMA_VERSION = 2
+export const MODEL_SCHEMA_VERSION = 3
 
 export const DEFAULT_VIEWPORT_VIEWS: readonly StudioCameraView[] = ['perspective', 'front']
 
@@ -20,6 +20,12 @@ export function createDefaultEditorState(): StudioEditorState {
       transform: 1,
       customTransform: 0.125,
       rotation: 15,
+    },
+    modeling: {
+      resizeDirection: 'symmetric',
+      controlMode: 'hybrid',
+      transformSpace: 'global',
+      language: 'en',
     },
     viewportLayout: 1,
     viewportViews: [...DEFAULT_VIEWPORT_VIEWS],
@@ -67,6 +73,7 @@ export function createStudioCube(index = 0): StudioCube {
     size: { x: 16, y: 16, z: 16 },
     rotation: { x: 0, y: 0, z: 0 },
     visible: true,
+    locked: false,
     pivot: { ...pivot },
     defaultPivot: { ...pivot },
   }
@@ -82,6 +89,7 @@ export function createStudioGroup(index = 0, elements: StudioCube[] = []): Studi
     rotation: { x: 0, y: 0, z: 0 },
     scale: { x: 1, y: 1, z: 1 },
     visible: true,
+    locked: false,
     pivot: { ...center },
     defaultPivot: { ...center },
   }
@@ -123,6 +131,7 @@ export function cloneStudioCube(cube: StudioCube): StudioCube {
     size,
     rotation: cloneVector(cube.rotation, { x: 0, y: 0, z: 0 }),
     visible: cube.visible !== false,
+    locked: cube.locked === true,
     pivot,
     defaultPivot: cloneVector(cube.defaultPivot, pivot),
     parentId: cube.parentId,
@@ -141,6 +150,7 @@ export function cloneStudioGroup(group: StudioGroup): StudioGroup {
     rotation: cloneVector(group.rotation, { x: 0, y: 0, z: 0 }),
     scale: cloneVector(group.scale, { x: 1, y: 1, z: 1 }),
     visible: group.visible !== false,
+    locked: group.locked === true,
     pivot,
     defaultPivot: cloneVector(group.defaultPivot, pivot),
     parentId: group.parentId,
@@ -174,6 +184,10 @@ function cloneEditorState(editor: StudioEditorState | undefined): StudioEditorSt
   const transform = editor?.snapping?.transform
   const rotation = editor?.snapping?.rotation
   const views = editor?.viewportViews?.filter((view) => DEFAULT_CAMERA_VIEWS.includes(view)) ?? []
+  const resizeDirection = editor?.modeling?.resizeDirection
+  const controlMode = editor?.modeling?.controlMode
+  const transformSpace = editor?.modeling?.transformSpace
+  const language = editor?.modeling?.language
   return {
     snapping: {
       transform: transform === null
@@ -187,6 +201,18 @@ function cloneEditorState(editor: StudioEditorState | undefined): StudioEditorSt
         : typeof rotation === 'number' && Number.isFinite(rotation) && rotation > 0
           ? rotation
           : defaults.snapping.rotation,
+    },
+    modeling: {
+      resizeDirection: ['symmetric', 'positive', 'negative'].includes(resizeDirection ?? '')
+        ? resizeDirection!
+        : defaults.modeling.resizeDirection,
+      controlMode: ['gizmos', 'tactilismos', 'hybrid'].includes(controlMode ?? '')
+        ? controlMode!
+        : defaults.modeling.controlMode,
+      transformSpace: ['global', 'local', 'parent'].includes(transformSpace ?? '')
+        ? transformSpace!
+        : defaults.modeling.transformSpace,
+      language: language === 'es' ? 'es' : defaults.modeling.language,
     },
     viewportLayout: editor?.viewportLayout === 2 ? 2 : 1,
     viewportViews: views.length ? [...views.slice(0, 2)] : [...defaults.viewportViews],

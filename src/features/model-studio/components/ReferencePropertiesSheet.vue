@@ -208,6 +208,7 @@ fieldset input {
   background: transparent;
   color: var(--color-text);
   font-family: var(--font-mono);
+  font-size: 1rem;
 }
 
 .opacity-field > span {

@@ -111,7 +111,7 @@ fieldset { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:
 legend { grid-column: 1 / -1; margin-bottom: var(--space-2); color: var(--color-text-muted); font-size: 0.76rem; font-weight: 780; }
 fieldset label { min-width: 0; display: grid; grid-template-columns: 1.6rem minmax(0, 1fr); align-items: center; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); overflow: hidden; background: var(--color-input-bg); }
 fieldset label:focus-within { border-color: var(--color-accent); box-shadow: var(--focus-ring); }
-fieldset input { width: 100%; min-width: 0; min-height: 3rem; border: 0; outline: 0; background: transparent; color: var(--color-text); font-family: var(--font-mono); font-size: 0.82rem; }
+fieldset input { width: 100%; min-width: 0; min-height: 3rem; border: 0; outline: 0; background: transparent; color: var(--color-text); font-family: var(--font-mono); font-size: 1rem; }
 .axis { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 850; text-align: center; }
 .axis--x { color: #f46b73; }
 .axis--y { color: #62d77c; }

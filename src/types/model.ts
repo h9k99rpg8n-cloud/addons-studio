@@ -21,6 +21,8 @@ export interface StudioNodeBase {
   id: string
   name: string
   visible: boolean
+  /** Locked nodes remain visible but cannot be picked or transformed from the viewport. */
+  locked: boolean
   /** Absolute editor pivot in model space. Future bones can reuse this value. */
   pivot: StudioVector3
   /** Stable reset target retained while the node moves with its geometry. */
@@ -40,6 +42,7 @@ export interface StudioCube {
   /** Euler rotation stored in degrees for a touch-friendly Bedrock workflow. */
   rotation: StudioVector3
   visible: StudioNodeBase['visible']
+  locked: StudioNodeBase['locked']
   pivot: StudioNodeBase['pivot']
   defaultPivot: StudioNodeBase['defaultPivot']
   parentId?: StudioNodeBase['parentId']
@@ -55,6 +58,7 @@ export interface StudioGroup {
   rotation: StudioVector3
   scale: StudioVector3
   visible: StudioNodeBase['visible']
+  locked: StudioNodeBase['locked']
   pivot: StudioNodeBase['pivot']
   defaultPivot: StudioNodeBase['defaultPivot']
   parentId?: StudioNodeBase['parentId']
@@ -99,8 +103,22 @@ export interface StudioSnappingSettings {
   rotation: number | null
 }
 
+export type StudioResizeDirection = 'symmetric' | 'positive' | 'negative'
+export type StudioControlMode = 'gizmos' | 'tactilismos' | 'hybrid'
+export type StudioTransformSpace = 'global' | 'local' | 'parent'
+export type StudioEditorLanguage = 'en' | 'es'
+
+export interface StudioModelingSettings {
+  resizeDirection: StudioResizeDirection
+  controlMode: StudioControlMode
+  transformSpace: StudioTransformSpace
+  /** Language foundation only; full application localization comes later. */
+  language: StudioEditorLanguage
+}
+
 export interface StudioEditorState {
   snapping: StudioSnappingSettings
+  modeling: StudioModelingSettings
   viewportLayout: StudioViewportLayout
   viewportViews: StudioCameraView[]
 }

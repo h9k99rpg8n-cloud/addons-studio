@@ -53,22 +53,30 @@ describe('ModelRepository', () => {
     expect(reopened?.elements[1]?.rotation.y).toBe(90)
   })
 
-  it('persists hierarchy, pivots, locked references, viewport layout, and snapping', async () => {
+  it('persists hierarchy, object locks, modeling settings, references, viewports, and snapping', async () => {
     let model = await models.createModel({
       projectId,
       name: 'Workflow Model',
       identifier: 'geometry.model_project.workflow_model',
     })
     const cube = createStudioCube()
+    cube.locked = true
     cube.pivot = { x: 2, y: 3, z: 4 }
     cube.defaultPivot = { x: 8, y: 8, z: 8 }
     const group = createStudioGroup(0, [cube])
+    group.locked = true
     cube.parentId = group.id
     model.groups.push(group)
     model.elements.push(cube)
     model.editor.viewportLayout = 2
     model.editor.viewportViews = ['front', 'perspective']
     model.editor.snapping = { transform: 0.25, customTransform: 0.125, rotation: 22.5 }
+    model.editor.modeling = {
+      resizeDirection: 'negative',
+      controlMode: 'tactilismos',
+      transformSpace: 'parent',
+      language: 'es',
+    }
     model = (
       await models.addReferenceAsset(
         model,
@@ -84,12 +92,23 @@ describe('ModelRepository', () => {
 
     expect(reopened?.schemaVersion).toBe(MODEL_SCHEMA_VERSION)
     expect(reopened?.groups[0]?.id).toBe(group.id)
-    expect(reopened?.elements[0]).toMatchObject({ parentId: group.id, pivot: { x: 2, y: 3, z: 4 } })
+    expect(reopened?.groups[0]?.locked).toBe(true)
+    expect(reopened?.elements[0]).toMatchObject({
+      parentId: group.id,
+      pivot: { x: 2, y: 3, z: 4 },
+      locked: true,
+    })
     expect(reopened?.references[0]?.locked).toBe(true)
     expect(reopened?.editor).toMatchObject({
       viewportLayout: 2,
       viewportViews: ['front', 'perspective'],
       snapping: { transform: 0.25, customTransform: 0.125, rotation: 22.5 },
+      modeling: {
+        resizeDirection: 'negative',
+        controlMode: 'tactilismos',
+        transformSpace: 'parent',
+        language: 'es',
+      },
     })
   })
 
@@ -130,9 +149,16 @@ describe('ModelRepository', () => {
     const reopened = await models.getModel(model.id)
     expect(reopened?.elements).toHaveLength(1)
     expect(reopened?.elements[0]?.pivot).toEqual({ x: 8, y: 8, z: 8 })
+    expect(reopened?.elements[0]?.locked).toBe(false)
     expect(reopened?.groups).toEqual([])
     expect(reopened?.references[0]).toMatchObject({ view: 'right', locked: true })
     expect(reopened?.editor.viewportLayout).toBe(1)
+    expect(reopened?.editor.modeling).toEqual({
+      resizeDirection: 'symmetric',
+      controlMode: 'hybrid',
+      transformSpace: 'global',
+      language: 'en',
+    })
     expect(reopened?.schemaVersion).toBe(MODEL_SCHEMA_VERSION)
   })
 

@@ -4,6 +4,9 @@ import { ref, watch } from 'vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import { cloneStudioCube, cloneStudioGroup } from '@/core/model/modelFactory'
 import type { StudioModelNode } from '@/types/model'
+import type { StudioAxis } from '@/core/model/modelHierarchy'
+
+type NumericOperation = 'generic' | 'move' | 'scale' | 'rotate'
 
 const props = defineProps<{
   open: boolean
@@ -13,13 +16,15 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   begin: []
-  preview: [node: StudioModelNode]
-  commit: [payload: { after: StudioModelNode; label: string }]
+  preview: [payload: { node: StudioModelNode; operation: NumericOperation; axis?: StudioAxis }]
+  commit: [payload: { after: StudioModelNode; label: string; operation: NumericOperation; axis?: StudioAxis }]
 }>()
 
 const draft = ref<StudioModelNode>()
 const beforeEdit = ref<StudioModelNode>()
 const activeLabel = ref<string>()
+const activeOperation = ref<NumericOperation>('generic')
+const activeAxis = ref<StudioAxis>()
 
 function cloneNode(node: StudioModelNode): StudioModelNode {
   return node.type === 'cube' ? cloneStudioCube(node) : cloneStudioGroup(node)
@@ -33,10 +38,12 @@ watch(
   { immediate: true, deep: true },
 )
 
-function beginEdit(label: string): void {
+function beginEdit(label: string, operation: NumericOperation, axis?: StudioAxis): void {
   if (!props.node) return
   beforeEdit.value = cloneNode(props.node)
   activeLabel.value = label
+  activeOperation.value = operation
+  activeAxis.value = axis
   emit('begin')
 }
 
@@ -51,7 +58,11 @@ function preview(): void {
     draft.value.scale.y = Math.max(0.05, Number(draft.value.scale.y) || 0.05)
     draft.value.scale.z = Math.max(0.05, Number(draft.value.scale.z) || 0.05)
   }
-  emit('preview', cloneNode(draft.value))
+  emit('preview', {
+    node: cloneNode(draft.value),
+    operation: activeOperation.value,
+    axis: activeAxis.value,
+  })
 }
 
 function commit(): void {
@@ -62,7 +73,16 @@ function commit(): void {
   const label = activeLabel.value ?? `Edit ${after.type}`
   beforeEdit.value = undefined
   activeLabel.value = undefined
-  if (JSON.stringify(before) !== JSON.stringify(after)) emit('commit', { after, label })
+  if (JSON.stringify(before) !== JSON.stringify(after)) {
+    emit('commit', {
+      after,
+      label,
+      operation: activeOperation.value,
+      axis: activeAxis.value,
+    })
+  }
+  activeOperation.value = 'generic'
+  activeAxis.value = undefined
 }
 
 function finishAndClose(): void {
@@ -88,7 +108,7 @@ function finishAndClose(): void {
           class="text-input"
           maxlength="60"
           autocomplete="off"
-          @focus="beginEdit(`Rename ${draft.type}`)"
+          @focus="beginEdit(`Rename ${draft.type}`, 'generic')"
           @input="preview"
           @blur="commit"
         />
@@ -103,7 +123,7 @@ function finishAndClose(): void {
             type="number"
             inputmode="decimal"
             step="0.1"
-            @focus="beginEdit(`Move ${draft.type}`)"
+            @focus="beginEdit(`Move ${draft.type}`, 'move', axis)"
             @input="preview"
             @blur="commit"
           />
@@ -121,7 +141,7 @@ function finishAndClose(): void {
             inputmode="decimal"
             min="0.25"
             step="0.25"
-            @focus="beginEdit(`Resize ${draft.type}`)"
+            @focus="beginEdit(`Resize ${draft.type}`, 'scale', axis)"
             @input="preview"
             @blur="commit"
           />
@@ -132,7 +152,7 @@ function finishAndClose(): void {
             inputmode="decimal"
             min="0.05"
             step="0.05"
-            @focus="beginEdit(`Resize ${draft.type}`)"
+            @focus="beginEdit(`Resize ${draft.type}`, 'scale', axis)"
             @input="preview"
             @blur="commit"
           />
@@ -148,7 +168,7 @@ function finishAndClose(): void {
             type="number"
             inputmode="decimal"
             step="1"
-            @focus="beginEdit(`Rotate ${draft.type}`)"
+            @focus="beginEdit(`Rotate ${draft.type}`, 'rotate', axis)"
             @input="preview"
             @blur="commit"
           />
@@ -217,7 +237,7 @@ fieldset input {
   background: transparent;
   color: var(--color-text);
   font-family: var(--font-mono);
-  font-size: 0.82rem;
+  font-size: 1rem;
 }
 
 .axis {

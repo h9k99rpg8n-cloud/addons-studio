@@ -20,6 +20,15 @@ describe('mobile Model Studio viewport architecture', () => {
     expect(viewportSource).not.toContain('TransformControls')
   })
 
+  it('implements Tactilismos without stealing empty-space camera gestures', () => {
+    expect(viewportSource).toContain("mode: 'move' | 'scale' | 'rotate'")
+    expect(viewportSource).toContain('startDirectTouch')
+    expect(viewportSource).toContain('buildUniformResizeState')
+    expect(viewportSource).toContain('Hold object: Tactilismo')
+    expect(viewportSource).toContain('emptyPointer =')
+    expect(studioSource).toContain('controlMode')
+  })
+
   it('integrates orbit, pinch, and pan without a dedicated orbit modeling tool', () => {
     expect(viewportSource).toContain('controls.enabled = true')
     expect(viewportSource).toContain('three.TOUCH.DOLLY_PAN')
@@ -40,5 +49,12 @@ describe('mobile Model Studio viewport architecture', () => {
     expect(studioSource).toContain('setViewportLayout(1)')
     expect(studioSource).toContain('setViewportLayout(2)')
     expect(studioSource).toContain('Three and four viewports are coming later')
+  })
+
+  it('freezes resize projection and applies gesture spike safeguards', () => {
+    expect(viewportSource).toContain('projection,')
+    expect(viewportSource).toContain('sanitizeGestureDelta')
+    expect(viewportSource).toContain('initialExtent')
+    expect(viewportSource).toContain('cameraDistance')
   })
 })

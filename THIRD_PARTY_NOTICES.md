@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Addons Studio is licensed under the MIT License. The following direct dependencies are independent projects distributed under their own licenses. Versions reflect the Alpha `0.0.3.5` lockfile; `package-lock.json` is the source of truth for the complete transitive dependency graph.
+Addons Studio is licensed under the MIT License. The following direct dependencies are independent projects distributed under their own licenses. Versions reflect the Alpha `0.0.3.6` lockfile; `package-lock.json` is the source of truth for the complete transitive dependency graph.
 
 | Dependency | Version | Author / project | Repository | License | Purpose in Addons Studio |
 | --- | ---: | --- | --- | --- | --- |

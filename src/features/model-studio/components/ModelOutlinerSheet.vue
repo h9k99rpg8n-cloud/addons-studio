@@ -11,12 +11,15 @@ const props = defineProps<{
   open: boolean
   model: StudioModel
   selectedNodeId?: string
+  selectedNodeIds?: string[]
   selectedReferenceId?: string
+  multiSelect?: boolean
+  isolationActive?: boolean
 }>()
 
 defineEmits<{
   close: []
-  selectNode: [id: string]
+  selectNode: [id: string, additive?: boolean]
   selectReference: [id: string]
   createGroup: []
   renameNode: [id: string]
@@ -25,6 +28,9 @@ defineEmits<{
   toggleElement: [id: string]
   deleteElement: [id: string]
   toggleGroup: [id: string]
+  toggleNodeLock: [id: string]
+  setMultiSelect: [enabled: boolean]
+  exitIsolation: []
   deleteGroup: [id: string]
   editReference: [id: string]
   toggleReference: [id: string]
@@ -54,6 +60,14 @@ function toggleExpanded(id: string): void {
 function rootElements(): StudioModel['elements'] {
   return props.model.elements.filter((element) => !element.parentId)
 }
+
+function isSelected(id: string): boolean {
+  return props.selectedNodeIds?.includes(id) ?? props.selectedNodeId === id
+}
+
+function nodeStatus(visible: boolean, locked: boolean, context: string): string {
+  return [context, visible ? 'Visible' : 'Hidden', locked ? 'Locked' : 'Unlocked'].join(' · ')
+}
 </script>
 
 <template>
@@ -67,22 +81,34 @@ function rootElements(): StudioModel['elements'] {
       <section>
         <header>
           <span><StudioIcon name="model" :size="19" /><h3>Model</h3></span>
-          <button type="button" class="new-group" @click="$emit('createGroup')"><AppIcon name="folder-plus" :size="18" />New Group</button>
+          <span class="outliner-actions">
+            <button
+              type="button"
+              class="new-group"
+              :aria-pressed="multiSelect"
+              @click="$emit('setMultiSelect', !multiSelect)"
+            ><AppIcon name="check" :size="18" />{{ multiSelect ? 'Done' : 'Multi' }}</button>
+            <button type="button" class="new-group" @click="$emit('createGroup')"><AppIcon name="folder-plus" :size="18" />New Group</button>
+          </span>
         </header>
+        <button v-if="isolationActive" type="button" class="isolation-banner" @click="$emit('exitIsolation')">
+          <AppIcon name="eye" :size="18" />Exit Isolation / Show All
+        </button>
         <div v-if="model.elements.length || model.groups.length" class="outliner-list">
           <template v-for="group in model.groups" :key="group.id">
             <article
               class="outliner-row outliner-row--group"
-              :class="{ 'outliner-row--selected': selectedNodeId === group.id }"
+              :class="{ 'outliner-row--selected': isSelected(group.id), 'outliner-row--locked': group.locked, 'outliner-row--hidden': !group.visible }"
             >
               <button type="button" :aria-label="`${expanded.has(group.id) ? 'Collapse' : 'Expand'} ${group.name}`" @click="toggleExpanded(group.id)">
                 <AppIcon name="chevron-right" :size="19" :class="{ 'expand-icon--open': expanded.has(group.id) }" />
               </button>
-              <button type="button" class="outliner-row__select" @click="$emit('selectNode', group.id)">
-                <AppIcon name="folder" :size="20" />
-                <span><strong>{{ group.name }}</strong><small>{{ getGroupChildren(model, group.id).length }} cubes</small></span>
+              <button type="button" class="outliner-row__select" :aria-pressed="isSelected(group.id)" @click="$emit('selectNode', group.id, multiSelect)">
+                <span v-if="multiSelect" class="selection-checkbox" aria-hidden="true"><AppIcon v-if="isSelected(group.id)" name="check" :size="15" /></span>
+                <AppIcon v-else name="folder" :size="20" />
+                <span><strong>{{ group.name }}</strong><small>{{ nodeStatus(group.visible, group.locked, `${getGroupChildren(model, group.id).length} cubes`) }}</small></span>
               </button>
-              <button type="button" :aria-label="`Duplicate ${group.name}`" @click="$emit('duplicateNode', group.id)"><AppIcon name="copy" :size="18" /></button>
+              <button type="button" :aria-label="`${group.locked ? 'Unlock' : 'Lock'} ${group.name}`" @click="$emit('toggleNodeLock', group.id)"><AppIcon :name="group.locked ? 'lock' : 'unlock'" :size="18" /></button>
               <button type="button" :aria-label="`${group.visible ? 'Hide' : 'Show'} ${group.name}`" @click="$emit('toggleGroup', group.id)"><AppIcon :name="group.visible ? 'eye' : 'eye-off'" :size="18" /></button>
               <button type="button" :aria-label="`${group.name} actions`" @click="$emit('showActions', group.id)"><AppIcon name="more-vertical" :size="18" /></button>
             </article>
@@ -91,13 +117,14 @@ function rootElements(): StudioModel['elements'] {
               v-for="element in (expanded.has(group.id) ? getGroupChildren(model, group.id) : [])"
               :key="element.id"
               class="outliner-row outliner-row--child"
-              :class="{ 'outliner-row--selected': selectedNodeId === element.id }"
+              :class="{ 'outliner-row--selected': isSelected(element.id), 'outliner-row--locked': element.locked || group.locked, 'outliner-row--hidden': !element.visible || !group.visible }"
             >
-              <button type="button" class="outliner-row__select" @click="$emit('selectNode', element.id)">
-                <AppIcon name="box" :size="19" />
-                <span><strong>{{ element.name }}</strong><small>Cube · {{ group.name }}</small></span>
+              <button type="button" class="outliner-row__select" :aria-pressed="isSelected(element.id)" @click="$emit('selectNode', element.id, multiSelect)">
+                <span v-if="multiSelect" class="selection-checkbox" aria-hidden="true"><AppIcon v-if="isSelected(element.id)" name="check" :size="15" /></span>
+                <AppIcon v-else name="box" :size="19" />
+                <span><strong>{{ element.name }}</strong><small>{{ nodeStatus(element.visible && group.visible, element.locked || group.locked, `Cube · ${group.name}`) }}</small></span>
               </button>
-              <button type="button" :aria-label="`Duplicate ${element.name}`" @click="$emit('duplicateNode', element.id)"><AppIcon name="copy" :size="18" /></button>
+              <button type="button" :aria-label="`${element.locked ? 'Unlock' : 'Lock'} ${element.name}`" @click="$emit('toggleNodeLock', element.id)"><AppIcon :name="element.locked ? 'lock' : 'unlock'" :size="18" /></button>
               <button type="button" :aria-label="`${element.visible ? 'Hide' : 'Show'} ${element.name}`" @click="$emit('toggleElement', element.id)"><AppIcon :name="element.visible ? 'eye' : 'eye-off'" :size="18" /></button>
               <button type="button" :aria-label="`${element.name} actions`" @click="$emit('showActions', element.id)"><AppIcon name="more-vertical" :size="18" /></button>
             </article>
@@ -107,13 +134,14 @@ function rootElements(): StudioModel['elements'] {
             v-for="element in rootElements()"
             :key="element.id"
             class="outliner-row"
-            :class="{ 'outliner-row--selected': selectedNodeId === element.id }"
+            :class="{ 'outliner-row--selected': isSelected(element.id), 'outliner-row--locked': element.locked, 'outliner-row--hidden': !element.visible }"
           >
-            <button type="button" class="outliner-row__select" @click="$emit('selectNode', element.id)">
-              <AppIcon name="box" :size="20" />
-              <span><strong>{{ element.name }}</strong><small>Cube · Model Root</small></span>
+            <button type="button" class="outliner-row__select" :aria-pressed="isSelected(element.id)" @click="$emit('selectNode', element.id, multiSelect)">
+              <span v-if="multiSelect" class="selection-checkbox" aria-hidden="true"><AppIcon v-if="isSelected(element.id)" name="check" :size="15" /></span>
+              <AppIcon v-else name="box" :size="20" />
+              <span><strong>{{ element.name }}</strong><small>{{ nodeStatus(element.visible, element.locked, 'Cube · Model Root') }}</small></span>
             </button>
-            <button type="button" :aria-label="`Duplicate ${element.name}`" @click="$emit('duplicateNode', element.id)"><AppIcon name="copy" :size="18" /></button>
+            <button type="button" :aria-label="`${element.locked ? 'Unlock' : 'Lock'} ${element.name}`" @click="$emit('toggleNodeLock', element.id)"><AppIcon :name="element.locked ? 'lock' : 'unlock'" :size="18" /></button>
             <button type="button" :aria-label="`${element.visible ? 'Hide' : 'Show'} ${element.name}`" @click="$emit('toggleElement', element.id)">
               <AppIcon :name="element.visible ? 'eye' : 'eye-off'" :size="18" />
             </button>
@@ -169,6 +197,7 @@ function rootElements(): StudioModel['elements'] {
 }
 
 .outliner section > header > span { display: flex; align-items: center; gap: var(--space-2); }
+.outliner-actions { gap: 0 !important; }
 
 .new-group {
   min-height: var(--touch-target);
@@ -180,6 +209,22 @@ function rootElements(): StudioModel['elements'] {
   color: var(--color-accent-strong);
   font-size: 0.7rem;
   font-weight: 760;
+}
+
+.isolation-banner {
+  width: 100%;
+  min-height: var(--touch-target);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  border: 1px solid #6f5a1d;
+  border-radius: var(--radius-lg);
+  background: #29230f;
+  color: #f2d570;
+  font-size: 0.74rem;
+  font-weight: 780;
 }
 
 .outliner h3 {
@@ -212,6 +257,8 @@ function rootElements(): StudioModel['elements'] {
   border-color: var(--color-accent);
   box-shadow: inset 3px 0 var(--color-accent);
 }
+.outliner-row--locked { border-style: dashed; }
+.outliner-row--hidden { opacity: 0.64; }
 
 .outliner-row button {
   min-width: var(--touch-target);
@@ -230,6 +277,20 @@ function rootElements(): StudioModel['elements'] {
   padding: 0.45rem 0.65rem;
   color: var(--color-text) !important;
   text-align: left;
+}
+.selection-checkbox {
+  width: 1.2rem;
+  height: 1.2rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.32rem;
+  color: #07100b;
+  background: var(--color-input-bg);
+}
+.outliner-row--selected .selection-checkbox {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
 }
 
 .outliner-row__select > span {

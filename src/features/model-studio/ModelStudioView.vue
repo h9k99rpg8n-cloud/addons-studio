@@ -11,9 +11,10 @@ import { toAppError } from '@/core/errors/AppError'
 import {
   createElementCommand,
   createGroupCommand,
-  createHierarchyCommand,
+  createNodesCommand,
   deleteElementCommand,
   deleteGroupCommand,
+  deleteSelectionCommand,
   ModelCommandHistory,
   updateElementCommand,
   updateGroupCommand,
@@ -23,6 +24,7 @@ import {
 import {
   cloneStudioCube,
   cloneStudioGroup,
+  cloneStudioModel,
   cloneStudioReference,
   createStudioCube,
   createStudioGroup,
@@ -32,13 +34,29 @@ import {
   buildNodeTransformState,
   buildPivotState,
   captureNodeTransform,
-  duplicateStudioCube,
-  duplicateStudioGroup,
   getGroupChildren,
   getStudioNode,
+  hierarchyBounds,
+  isNodeEffectivelyLocked,
   type StudioHierarchyState,
   type StudioNodeTransformSession,
 } from '@/core/model/modelHierarchy'
+import {
+  alignSelectionState,
+  buildSelectionTranslationState,
+  captureSelectionTransform,
+  distributeSelectionState,
+  duplicateAndMirrorSelection,
+  duplicateSelection,
+  isolatedElementIds,
+  lockSelectionState,
+  mirrorSelectionState,
+  normalizeSelectionIds,
+  selectionCanTransform,
+  selectionElements,
+  visibilitySelectionState,
+  type StudioAlignment,
+} from '@/core/model/modelProductivity'
 import { modelPersistenceService } from '@/core/model/modelPersistenceService'
 import { modelRepository } from '@/core/model/modelRepository'
 import { useToastStore } from '@/stores/toasts'
@@ -48,12 +66,15 @@ import type {
   StudioCameraView,
   StudioGroup,
   StudioModel,
+  StudioModelingSettings,
   StudioModelNode,
   StudioReferenceImage,
   StudioVector3,
 } from '@/types/model'
+import type { StudioAxis } from '@/core/model/modelHierarchy'
 
 import ModelOutlinerSheet from './components/ModelOutlinerSheet.vue'
+import ModelSettingsSheet from './components/ModelSettingsSheet.vue'
 import ModelViewport from './components/ModelViewport.vue'
 import PivotPropertiesSheet from './components/PivotPropertiesSheet.vue'
 import ReferencePropertiesSheet from './components/ReferencePropertiesSheet.vue'
@@ -67,7 +88,11 @@ const assets = ref<ModelReferenceAsset[]>([])
 const loading = ref(true)
 const loadError = ref('')
 const tool = ref<ModelTransformTool>('select')
-const selectedNodeId = ref<string>()
+const selectedNodeIds = ref<string[]>([])
+const selectedNodeId = computed<string | undefined>({
+  get: () => selectedNodeIds.value.at(-1),
+  set: (id) => { selectedNodeIds.value = id ? [id] : [] },
+})
 const selectedReferenceId = ref<string>()
 const propertiesOpen = ref(false)
 const pivotPropertiesOpen = ref(false)
@@ -76,8 +101,14 @@ const outlinerOpen = ref(false)
 const moreOpen = ref(false)
 const viewsOpen = ref(false)
 const snappingOpen = ref(false)
+const settingsOpen = ref(false)
+const mirrorOpen = ref(false)
+const arrangeOpen = ref(false)
 const objectActionsOpen = ref(false)
 const moveToGroupOpen = ref(false)
+const deleteSelectionOpen = ref(false)
+const multiSelectMode = ref(false)
+const isolatedIds = ref<string[]>([])
 const renameOpen = ref(false)
 const renameValue = ref('')
 const renameTargetId = ref<string>()
@@ -96,10 +127,43 @@ const maximizedViewport = ref<number>()
 let numericSession: StudioNodeTransformSession | undefined
 let pivotSession: StudioNodeTransformSession | undefined
 let saveSequence = 0
+const duplicateMemory = ref<{ ids: string[]; offset?: StudioVector3 }>()
 
 const selectedNode = computed(() => model.value ? getStudioNode(model.value, selectedNodeId.value) : undefined)
-const selectedElement = computed(() => selectedNode.value?.type === 'cube' ? selectedNode.value : undefined)
-const selectedGroup = computed(() => selectedNode.value?.type === 'group' ? selectedNode.value : undefined)
+const selectedNodes = computed(() => model.value
+  ? selectedNodeIds.value
+      .map((id) => getStudioNode(model.value!, id))
+      .filter((node): node is StudioModelNode => Boolean(node))
+  : [],
+)
+const selectionCount = computed(() => selectedNodes.value.length)
+const selectedGroup = computed(() => selectionCount.value === 1 && selectedNode.value?.type === 'group' ? selectedNode.value : undefined)
+const selectedCubes = computed(() => model.value ? selectionElements(model.value, selectedNodeIds.value) : [])
+const selectionTransformable = computed(() => model.value
+  ? selectionCanTransform(model.value, selectedNodeIds.value)
+  : false,
+)
+const selectionDirectlyLocked = computed(() => selectedNodes.value.length
+  ? selectedNodes.value.every((node) => node.locked)
+  : false,
+)
+const selectionHasLockedNode = computed(() => model.value && selectedNodes.value.length
+  ? selectedNodes.value.some((node) => isNodeEffectivelyLocked(model.value!, node))
+  : false,
+)
+const selectionVisible = computed(() => selectedNodes.value.length > 0
+  && selectedNodes.value.every((node) => node.visible),
+)
+const selectedAreCubes = computed(() => selectedNodes.value.length > 0
+  && selectedNodes.value.every((node) => node.type === 'cube'),
+)
+const canDuplicateAgain = computed(() => Boolean(
+  model.value
+  && duplicateMemory.value?.offset
+  && duplicateMemory.value.ids.length
+  && duplicateMemory.value.ids.every((id) => Boolean(getStudioNode(model.value!, id))),
+))
+const isolationActive = computed(() => isolatedIds.value.length > 0)
 const selectedReference = computed(() =>
   model.value?.references.find((reference) => reference.id === selectedReferenceId.value),
 )
@@ -235,26 +299,66 @@ function commitHierarchy(payload: { before: StudioHierarchyState; after: StudioH
   if (!model.value) return
   applyHierarchyState(model.value, payload.after)
   history.recordApplied(updateHierarchyCommand(payload.before, payload.after, payload.label))
+  rememberDuplicateOffset(payload)
   bumpHistory()
   scheduleSave()
 }
 
-function duplicateNode(id = selectedNodeId.value): void {
-  if (!model.value || !id) return
-  const node = getStudioNode(model.value, id)
-  if (!node) return
-  if (node.type === 'cube') {
-    const duplicate = duplicateStudioCube(model.value, node)
-    history.execute(createElementCommand(duplicate, model.value.elements.length), model.value)
-    selectedNodeId.value = duplicate.id
-  } else {
-    const duplicate = duplicateStudioGroup(model.value, node)
-    history.execute(createHierarchyCommand(duplicate.group, duplicate.elements), model.value)
-    selectedNodeId.value = duplicate.group.id
+function rememberDuplicateOffset(payload: { before: StudioHierarchyState; after: StudioHierarchyState; label: string }): void {
+  if (!duplicateMemory.value || !payload.label.toLowerCase().includes('move')) return
+  const id = duplicateMemory.value.ids[0]
+  const before = payload.before.elements.find((entry) => entry.id === id)
+    ?? payload.before.groups.find((entry) => entry.id === id)
+  const after = payload.after.elements.find((entry) => entry.id === id)
+    ?? payload.after.groups.find((entry) => entry.id === id)
+  if (!before || !after) return
+  const offset = {
+    x: after.position.x - before.position.x,
+    y: after.position.y - before.position.y,
+    z: after.position.z - before.position.z,
   }
+  if (Object.values(offset).every(Number.isFinite) && Object.values(offset).some((value) => Math.abs(value) > 1e-6)) {
+    duplicateMemory.value.offset = offset
+  }
+}
+
+function duplicateNode(id = selectedNodeId.value): void {
+  if (!model.value) return
+  const ids = id && !selectedNodeIds.value.includes(id) ? [id] : selectedNodeIds.value
+  if (!ids.length) return
+  const duplicate = duplicateSelection(model.value, ids)
+  if (!duplicate.selectedIds.length) return
+  history.execute(
+    createNodesCommand(duplicate.elements, duplicate.groups, ids.length > 1 ? 'Duplicate selection' : 'Duplicate object'),
+    model.value,
+  )
+  selectedNodeIds.value = duplicate.selectedIds
+  duplicateMemory.value = { ids: [...duplicate.selectedIds] }
   bumpHistory()
   objectActionsOpen.value = false
   outlinerOpen.value = false
+  scheduleSave()
+}
+
+function duplicateAgain(): void {
+  if (!model.value || !duplicateMemory.value?.offset) return
+  const previousOffset = { ...duplicateMemory.value.offset }
+  const duplicate = duplicateSelection(model.value, duplicateMemory.value.ids)
+  if (!duplicate.selectedIds.length) return
+  const temporary = cloneStudioModel(model.value)
+  temporary.elements.push(...duplicate.elements.map(cloneStudioCube))
+  temporary.groups.push(...duplicate.groups.map(cloneStudioGroup))
+  const session = captureSelectionTransform(temporary, duplicate.selectedIds)
+  if (!session) return
+  const moved = buildSelectionTranslationState(session, previousOffset)
+  history.execute(
+    createNodesCommand(moved.elements, moved.groups, 'Duplicate Again'),
+    model.value,
+  )
+  selectedNodeIds.value = duplicate.selectedIds
+  duplicateMemory.value = { ids: [...duplicate.selectedIds], offset: previousOffset }
+  objectActionsOpen.value = false
+  bumpHistory()
   scheduleSave()
 }
 
@@ -325,6 +429,107 @@ function toggleGroup(id: string): void {
   scheduleSave()
 }
 
+function applyHierarchyOperation(
+  state: { before: StudioHierarchyState; after: StudioHierarchyState } | undefined,
+  label: string,
+): void {
+  if (!model.value || !state) return
+  history.execute(updateHierarchyCommand(state.before, state.after, label), model.value)
+  bumpHistory()
+  scheduleSave()
+}
+
+function toggleNodeLock(id?: string): void {
+  if (!model.value) return
+  const ids = id && !selectedNodeIds.value.includes(id) ? [id] : selectedNodeIds.value
+  if (!ids.length) return
+  const nodes = ids.map((entry) => getStudioNode(model.value!, entry)).filter(Boolean) as StudioModelNode[]
+  const shouldLock = !nodes.every((node) => node.locked)
+  applyHierarchyOperation(
+    lockSelectionState(model.value, ids, shouldLock),
+    shouldLock ? 'Lock selection' : 'Unlock selection',
+  )
+  objectActionsOpen.value = false
+}
+
+function setSelectionVisibility(visible: boolean): void {
+  if (!model.value) return
+  applyHierarchyOperation(
+    visibilitySelectionState(model.value, selectedNodeIds.value, visible),
+    visible ? 'Show selection' : 'Hide selection',
+  )
+  objectActionsOpen.value = false
+}
+
+function confirmDeleteSelection(): void {
+  if (!selectedNodeIds.value.length || selectionHasLockedNode.value) return
+  objectActionsOpen.value = false
+  deleteSelectionOpen.value = true
+}
+
+function deleteSelectedNodes(): void {
+  if (!model.value || selectionHasLockedNode.value) return
+  const command = deleteSelectionCommand(model.value, selectedNodeIds.value)
+  if (!command) return
+  history.execute(command, model.value)
+  selectedNodeIds.value = []
+  isolatedIds.value = []
+  deleteSelectionOpen.value = false
+  bumpHistory()
+  scheduleSave()
+}
+
+function mirrorSelection(axis: StudioAxis, duplicate: boolean): void {
+  if (!model.value || !selectionTransformable.value) return
+  if (duplicate) {
+    const mirrored = duplicateAndMirrorSelection(model.value, selectedNodeIds.value, axis)
+    if (!mirrored.selectedIds.length) return
+    history.execute(
+      createNodesCommand(mirrored.elements, mirrored.groups, `Duplicate + Mirror ${axis.toUpperCase()}`),
+      model.value,
+    )
+    selectedNodeIds.value = mirrored.selectedIds
+    duplicateMemory.value = { ids: [...mirrored.selectedIds] }
+    bumpHistory()
+    scheduleSave()
+  } else {
+    applyHierarchyOperation(
+      mirrorSelectionState(model.value, selectedNodeIds.value, axis),
+      `Mirror ${axis.toUpperCase()}`,
+    )
+  }
+  mirrorOpen.value = false
+  objectActionsOpen.value = false
+}
+
+function alignSelection(axis: StudioAxis, alignment: StudioAlignment): void {
+  if (!model.value) return
+  applyHierarchyOperation(
+    alignSelectionState(model.value, selectedNodeIds.value, axis, alignment),
+    `Align ${alignment} ${axis.toUpperCase()}`,
+  )
+  arrangeOpen.value = false
+}
+
+function distributeSelection(axis: StudioAxis): void {
+  if (!model.value) return
+  applyHierarchyOperation(
+    distributeSelectionState(model.value, selectedNodeIds.value, axis),
+    `Distribute ${axis.toUpperCase()}`,
+  )
+  arrangeOpen.value = false
+}
+
+function isolateSelection(): void {
+  if (!model.value || !selectedNodeIds.value.length) return
+  isolatedIds.value = isolatedElementIds(model.value, selectedNodeIds.value)
+  objectActionsOpen.value = false
+}
+
+function exitIsolation(): void {
+  isolatedIds.value = []
+}
+
 function confirmDeleteGroup(id: string): void {
   const group = model.value?.groups.find((entry) => entry.id === id)
   if (!group) return
@@ -347,29 +552,32 @@ function deleteGroup(): void {
 }
 
 function moveCubeToGroup(groupId?: string): void {
-  if (!model.value || !selectedElement.value) return
-  const before = cloneStudioCube(selectedElement.value)
-  const after = cloneStudioCube(selectedElement.value)
-  after.parentId = groupId
+  if (!model.value || !selectedCubes.value.length) return
+  const selectedIds = new Set(selectedCubes.value.map((cube) => cube.id))
+  const before = selectedCubes.value.map(cloneStudioCube)
+  const after = selectedCubes.value.map((cube) => ({ ...cloneStudioCube(cube), parentId: groupId }))
   const target = groupId ? model.value.groups.find((group) => group.id === groupId) : undefined
-  if (target && getGroupChildren(model.value, target.id).length === 0) {
+  const remainingTargetChildren = target
+    ? getGroupChildren(model.value, target.id).filter((cube) => !selectedIds.has(cube.id))
+    : []
+  if (target && remainingTargetChildren.length === 0) {
     const beforeGroup = cloneStudioGroup(target)
     const afterGroup = cloneStudioGroup(target)
-    const center = {
-      x: after.position.x + after.size.x / 2,
-      y: after.position.y + after.size.y / 2,
-      z: after.position.z + after.size.z / 2,
-    }
+    const center = hierarchyBounds(after)?.center ?? afterGroup.position
     afterGroup.position = { ...center }
     afterGroup.pivot = { ...center }
     afterGroup.defaultPivot = { ...center }
     history.execute(updateHierarchyCommand(
-      { elements: [before], groups: [beforeGroup] },
-      { elements: [after], groups: [afterGroup] },
-      'Move cube to group',
+      { elements: before, groups: [beforeGroup] },
+      { elements: after, groups: [afterGroup] },
+      selectedCubes.value.length > 1 ? 'Move selection to group' : 'Move cube to group',
     ), model.value)
   } else {
-    history.execute(updateElementCommand(before, after, groupId ? 'Move cube to group' : 'Move cube to root'), model.value)
+    history.execute(updateHierarchyCommand(
+      { elements: before, groups: [] },
+      { elements: after, groups: [] },
+      groupId ? 'Move selection to group' : 'Move selection to root',
+    ), model.value)
   }
   bumpHistory()
   moveToGroupOpen.value = false
@@ -381,9 +589,7 @@ function undo(): void {
   if (!model.value) return
   const command = history.undo(model.value)
   if (!command) return
-  if (selectedNodeId.value && !getStudioNode(model.value, selectedNodeId.value)) {
-    selectedNodeId.value = undefined
-  }
+  selectedNodeIds.value = selectedNodeIds.value.filter((id) => Boolean(getStudioNode(model.value!, id)))
   bumpHistory()
   scheduleSave()
 }
@@ -397,32 +603,53 @@ function redo(): void {
 }
 
 function chooseTool(nextTool: ModelTransformTool): void {
+  if (nextTool !== 'select' && !selectionTransformable.value) return
+  if (selectionCount.value > 1 && !['select', 'move'].includes(nextTool)) return
   tool.value = nextTool
 }
 
 function beginNumericEdit(): void {
-  if (!model.value || !selectedNodeId.value) return
+  if (!model.value || !selectedNodeId.value || selectionCount.value !== 1 || !selectionTransformable.value) return
   numericSession = captureNodeTransform(model.value, selectedNodeId.value)
 }
 
-function previewNumericNode(node: StudioModelNode): void {
+function previewNumericNode(payload: {
+  node: StudioModelNode
+  operation: 'generic' | 'move' | 'scale' | 'rotate'
+  axis?: StudioAxis
+}): void {
   if (!model.value) return
-  numericSession ??= captureNodeTransform(model.value, node.id)
+  numericSession ??= captureNodeTransform(model.value, payload.node.id)
   if (!numericSession) return
-  applyHierarchyState(model.value, buildNodeTransformState(numericSession, node))
+  applyHierarchyState(model.value, buildNodeTransformState(numericSession, payload.node, {
+    operation: payload.operation,
+    axis: payload.axis,
+    resizeDirection: model.value.editor.modeling.resizeDirection,
+    transformSpace: model.value.editor.modeling.transformSpace,
+  }))
 }
 
-function commitNumericNode(payload: { after: StudioModelNode; label: string }): void {
+function commitNumericNode(payload: {
+  after: StudioModelNode
+  label: string
+  operation: 'generic' | 'move' | 'scale' | 'rotate'
+  axis?: StudioAxis
+}): void {
   if (!model.value) return
   numericSession ??= captureNodeTransform(model.value, payload.after.id)
   if (!numericSession) return
-  const after = buildNodeTransformState(numericSession, payload.after)
+  const after = buildNodeTransformState(numericSession, payload.after, {
+    operation: payload.operation,
+    axis: payload.axis,
+    resizeDirection: model.value.editor.modeling.resizeDirection,
+    transformSpace: model.value.editor.modeling.transformSpace,
+  })
   commitHierarchy({ before: numericSession.before, after, label: payload.label })
   numericSession = undefined
 }
 
 function beginPivotEdit(): void {
-  if (!model.value || !selectedNodeId.value) return
+  if (!model.value || !selectedNodeId.value || selectionCount.value !== 1 || !selectionTransformable.value) return
   pivotSession = captureNodeTransform(model.value, selectedNodeId.value)
 }
 
@@ -482,14 +709,29 @@ function setRotationSnap(value: number | null): void {
   scheduleSave()
 }
 
+function updateModelingSettings(settings: StudioModelingSettings): void {
+  if (!model.value) return
+  model.value.editor.modeling = { ...settings }
+  scheduleSave()
+}
+
 function showObjectActions(id: string): void {
-  selectNode(id)
+  if (!selectedNodeIds.value.includes(id)) selectNode(id)
   outlinerOpen.value = false
   objectActionsOpen.value = true
 }
 
-function selectNode(id?: string): void {
-  selectedNodeId.value = id
+function selectNode(id?: string, additive = false): void {
+  if (!id) {
+    selectedNodeIds.value = []
+  } else if (additive || multiSelectMode.value) {
+    const next = selectedNodeIds.value.includes(id)
+      ? selectedNodeIds.value.filter((entry) => entry !== id)
+      : [...selectedNodeIds.value, id]
+    selectedNodeIds.value = model.value ? normalizeSelectionIds(model.value, next) : next
+  } else {
+    selectedNodeIds.value = [id]
+  }
   if (id) selectedReferenceId.value = undefined
 }
 
@@ -498,9 +740,14 @@ function selectReference(id?: string): void {
   if (id) selectedNodeId.value = undefined
 }
 
-function selectNodeFromOutliner(id: string): void {
-  selectNode(id)
-  outlinerOpen.value = false
+function selectNodeFromOutliner(id: string, additive = false): void {
+  selectNode(id, additive)
+  if (!additive && !multiSelectMode.value) outlinerOpen.value = false
+  tool.value = 'select'
+}
+
+function setMultiSelect(enabled: boolean): void {
+  multiSelectMode.value = enabled
   tool.value = 'select'
 }
 
@@ -674,6 +921,7 @@ function showOutliner(): void {
           :model="model"
           :assets="assets"
           :selected-node-id="selectedNodeId"
+          :selected-node-ids="selectedNodeIds"
           :selected-reference-id="selectedReferenceId"
           :tool="tool"
           :view="model.editor.viewportViews[index] ?? 'perspective'"
@@ -683,6 +931,11 @@ function showOutliner(): void {
           :can-maximize="viewportCount > 1"
           :transform-snap="currentTransformSnap"
           :rotation-snap="currentRotationSnap"
+          :resize-direction="model.editor.modeling.resizeDirection"
+          :control-mode="model.editor.modeling.controlMode"
+          :transform-space="model.editor.modeling.transformSpace"
+          :multi-select="multiSelectMode"
+          :isolated-element-ids="isolatedIds"
           @activate="activeViewport = index"
           @toggle-maximize="toggleMaximize(index)"
           @select-node="selectNode"
@@ -700,7 +953,7 @@ function showOutliner(): void {
             :key="entry.id"
             type="button"
             :class="{ 'tool-button--active': tool === entry.id }"
-            :disabled="entry.id !== 'select' && !selectedNode"
+            :disabled="entry.id !== 'select' && (!selectionTransformable || (selectionCount > 1 && entry.id !== 'move'))"
             @click="chooseTool(entry.id)"
           >
             <AppIcon :name="entry.icon" :size="21" />
@@ -713,6 +966,14 @@ function showOutliner(): void {
           <button type="button" @click="snappingOpen = true">
             <AppIcon name="magnet" :size="21" />
             <span>Snap</span>
+          </button>
+          <button type="button" :class="{ 'tool-button--active': multiSelectMode }" @click="setMultiSelect(!multiSelectMode)">
+            <AppIcon name="check" :size="21" />
+            <span>{{ multiSelectMode ? `Multi ${selectionCount}` : 'Multi' }}</span>
+          </button>
+          <button type="button" @click="settingsOpen = true">
+            <AppIcon name="settings" :size="21" />
+            <span>{{ model.editor.modeling.transformSpace }}</span>
           </button>
           <button type="button" class="tool-button--create" @click="addCube">
             <AppIcon name="plus" :size="21" />
@@ -731,14 +992,14 @@ function showOutliner(): void {
             <span>Reference</span>
           </button>
           <button
-            v-if="selectedNode"
+            v-if="selectionCount === 1 && selectedNode && selectionTransformable"
             type="button"
             @click="propertiesOpen = true"
           >
             <AppIcon name="sliders" :size="21" />
             <span>Values</span>
           </button>
-          <button v-if="selectedNode" type="button" @click="objectActionsOpen = true">
+          <button v-if="selectionCount" type="button" @click="objectActionsOpen = true">
             <AppIcon name="more-vertical" :size="21" />
             <span>Object</span>
           </button>
@@ -769,6 +1030,12 @@ function showOutliner(): void {
         @preview="previewNumericNode"
         @commit="commitNumericNode"
       />
+      <ModelSettingsSheet
+        :open="settingsOpen"
+        :settings="model.editor.modeling"
+        @close="settingsOpen = false"
+        @update="updateModelingSettings"
+      />
       <PivotPropertiesSheet
         :open="pivotPropertiesOpen"
         :model="model"
@@ -791,7 +1058,10 @@ function showOutliner(): void {
         :open="outlinerOpen"
         :model="model"
         :selected-node-id="selectedNodeId"
+        :selected-node-ids="selectedNodeIds"
         :selected-reference-id="selectedReferenceId"
+        :multi-select="multiSelectMode"
+        :isolation-active="isolationActive"
         @close="outlinerOpen = false"
         @select-node="selectNodeFromOutliner"
         @select-reference="editReference"
@@ -802,6 +1072,9 @@ function showOutliner(): void {
         @toggle-element="toggleElement"
         @delete-element="deleteElement"
         @toggle-group="toggleGroup"
+        @toggle-node-lock="toggleNodeLock"
+        @set-multi-select="setMultiSelect"
+        @exit-isolation="exitIsolation"
         @delete-group="confirmDeleteGroup"
         @edit-reference="editReference"
         @toggle-reference="toggleReference"
@@ -877,9 +1150,9 @@ function showOutliner(): void {
       </BottomSheet>
 
       <BottomSheet
-        :open="objectActionsOpen && Boolean(selectedNode)"
-        :title="selectedNode?.name ?? 'Object'"
-        :description="selectedNode?.type === 'group' ? 'Group actions' : 'Cube actions'"
+        :open="objectActionsOpen && selectionCount > 0"
+        :title="selectionCount > 1 ? `${selectionCount} Selected Objects` : selectedNode?.name ?? 'Object'"
+        :description="selectionCount > 1 ? 'Multi-selection actions' : selectedNode?.type === 'group' ? 'Group actions' : 'Cube actions'"
         @close="objectActionsOpen = false"
       >
         <div class="studio-menu">
@@ -887,48 +1160,112 @@ function showOutliner(): void {
             <span><AppIcon name="copy" :size="22" /></span>
             <span><strong>Duplicate</strong><small>Creates an independent copy with a new ID</small></span>
           </button>
-          <button v-if="selectedNode" type="button" @click="beginRenameNode(selectedNode.id)">
+          <button type="button" :disabled="!canDuplicateAgain" @click="duplicateAgain">
+            <span><AppIcon name="copy" :size="22" /></span>
+            <span><strong>Duplicate Again</strong><small>{{ canDuplicateAgain ? 'Repeats the previous duplicate offset' : 'Move a duplicate first to record its offset' }}</small></span>
+          </button>
+          <button v-if="selectionCount === 1 && selectedNode" type="button" @click="beginRenameNode(selectedNode.id)">
             <span><AppIcon name="pencil" :size="22" /></span>
             <span><strong>Rename</strong><small>Change the Outliner name</small></span>
           </button>
-          <button v-if="selectedNode" type="button" @click="objectActionsOpen = false; pivotPropertiesOpen = true">
+          <button v-if="selectionCount === 1 && selectedNode" type="button" :disabled="!selectionTransformable" @click="objectActionsOpen = false; pivotPropertiesOpen = true">
             <span><AppIcon name="crosshair" :size="22" /></span>
             <span><strong>Edit Pivot</strong><small>Center, reset, move, or send to origin</small></span>
           </button>
-          <button v-if="selectedElement" type="button" @click="objectActionsOpen = false; moveToGroupOpen = true">
+          <button v-if="selectedAreCubes" type="button" :disabled="!selectionTransformable" @click="objectActionsOpen = false; moveToGroupOpen = true">
             <span><AppIcon name="folder-output" :size="22" /></span>
             <span><strong>Move to Group</strong><small>Place the cube in a group or back at root</small></span>
           </button>
-          <button v-if="selectedElement" type="button" class="menu-action--danger" @click="deleteElement(selectedElement.id)">
-            <span><AppIcon name="trash" :size="22" /></span>
-            <span><strong>Delete Cube</strong><small>Undo is available during this session</small></span>
+          <button type="button" :disabled="!selectionTransformable" @click="objectActionsOpen = false; mirrorOpen = true">
+            <span><AppIcon name="layers" :size="22" /></span>
+            <span><strong>Mirror</strong><small>Mirror in place or create a mirrored copy</small></span>
           </button>
-          <button v-if="selectedGroup" type="button" class="menu-action--danger" @click="confirmDeleteGroup(selectedGroup.id)">
+          <button v-if="selectedAreCubes && selectionCount >= 2" type="button" :disabled="!selectionTransformable" @click="objectActionsOpen = false; arrangeOpen = true">
+            <span><AppIcon name="move-3d" :size="22" /></span>
+            <span><strong>Align & Distribute</strong><small>Arrange selected cube bounds on X, Y, or Z</small></span>
+          </button>
+          <button type="button" @click="toggleNodeLock()">
+            <span><AppIcon :name="selectionDirectlyLocked ? 'unlock' : 'lock'" :size="22" /></span>
+            <span><strong>{{ selectionDirectlyLocked ? 'Unlock Selection' : 'Lock Selection' }}</strong><small>Locked objects remain visible and accessible here</small></span>
+          </button>
+          <button type="button" @click="setSelectionVisibility(!selectionVisible)">
+            <span><AppIcon :name="selectionVisible ? 'eye-off' : 'eye'" :size="22" /></span>
+            <span><strong>{{ selectionVisible ? 'Hide Selection' : 'Show Selection' }}</strong><small>Changes intended model visibility</small></span>
+          </button>
+          <button type="button" @click="isolationActive ? exitIsolation() : isolateSelection()">
+            <span><AppIcon name="eye" :size="22" /></span>
+            <span><strong>{{ isolationActive ? 'Exit Isolation / Show All' : 'Isolate Selection' }}</strong><small>Temporary editor-only visibility</small></span>
+          </button>
+          <button type="button" class="menu-action--danger" :disabled="selectionHasLockedNode" @click="confirmDeleteSelection">
             <span><AppIcon name="trash" :size="22" /></span>
-            <span><strong>Delete Group</strong><small>Contained cubes will move to model root</small></span>
+            <span><strong>Delete Selection</strong><small>{{ selectionHasLockedNode ? 'Unlock objects or their parent group before deleting' : 'Undo is available during this session' }}</small></span>
           </button>
         </div>
       </BottomSheet>
 
       <BottomSheet
-        :open="moveToGroupOpen && Boolean(selectedElement)"
-        title="Move Cube"
+        :open="moveToGroupOpen && selectedAreCubes"
+        :title="selectionCount > 1 ? 'Move Cubes' : 'Move Cube'"
         description="Groups are one level deep in this Alpha"
         @close="moveToGroupOpen = false"
       >
         <div class="move-list">
-          <button type="button" :class="{ active: !selectedElement?.parentId }" @click="moveCubeToGroup()">
+          <button type="button" :class="{ active: selectedCubes.every((cube) => !cube.parentId) }" @click="moveCubeToGroup()">
             <AppIcon name="list-tree" :size="20" /><span><strong>Model Root</strong><small>Outside every group</small></span>
           </button>
           <button
             v-for="group in model.groups"
             :key="group.id"
             type="button"
-            :class="{ active: selectedElement?.parentId === group.id }"
+            :class="{ active: selectedCubes.every((cube) => cube.parentId === group.id) }"
             @click="moveCubeToGroup(group.id)"
           >
             <AppIcon name="folder" :size="20" /><span><strong>{{ group.name }}</strong><small>Move into group</small></span>
           </button>
+        </div>
+      </BottomSheet>
+
+      <BottomSheet
+        :open="mirrorOpen"
+        title="Mirror Selection"
+        description="Mirror around the shared selection center on one axis"
+        @close="mirrorOpen = false"
+      >
+        <div class="mirror-sheet">
+          <section v-for="axis in (['x', 'y', 'z'] as const)" :key="axis">
+            <h3>{{ axis.toUpperCase() }} Axis</h3>
+            <div class="mirror-actions">
+              <button type="button" @click="mirrorSelection(axis, false)">
+                <strong>Mirror in Place</strong>
+                <small>Flip the current selection</small>
+              </button>
+              <button type="button" @click="mirrorSelection(axis, true)">
+                <strong>Duplicate + Mirror</strong>
+                <small>Keep the original and create a mirrored copy</small>
+              </button>
+            </div>
+          </section>
+        </div>
+      </BottomSheet>
+
+      <BottomSheet
+        :open="arrangeOpen"
+        title="Align & Distribute"
+        :description="`${selectionCount} cubes selected · operations use their visible bounds`"
+        @close="arrangeOpen = false"
+      >
+        <div class="arrange-sheet">
+          <section v-for="axis in (['x', 'y', 'z'] as const)" :key="axis">
+            <h3>{{ axis.toUpperCase() }} Axis</h3>
+            <div class="arrange-actions">
+              <button v-for="alignment in (['min', 'center', 'max'] as const)" :key="alignment" type="button" @click="alignSelection(axis, alignment)">
+                {{ alignment === 'min' ? 'Min' : alignment === 'max' ? 'Max' : 'Center' }}
+              </button>
+              <button type="button" :disabled="selectedCubes.length < 3" @click="distributeSelection(axis)">
+                Distribute
+              </button>
+            </div>
+          </section>
         </div>
       </BottomSheet>
 
@@ -941,7 +1278,11 @@ function showOutliner(): void {
         <div class="studio-menu">
           <button type="button" @click="showOutliner">
             <span><AppIcon name="list-tree" :size="22" /></span>
-            <span><strong>Outliner</strong><small>Select, rename, hide, or delete objects</small></span>
+            <span><strong>Outliner</strong><small>Select, organize, lock, isolate, and edit objects</small></span>
+          </button>
+          <button type="button" @click="moreOpen = false; settingsOpen = true">
+            <span><AppIcon name="settings" :size="22" /></span>
+            <span><strong>Model Studio Settings</strong><small>Resize direction, controls, and transform space</small></span>
           </button>
           <button type="button" @click="saveNow">
             <span><AppIcon name="save" :size="22" /></span>
@@ -967,6 +1308,18 @@ function showOutliner(): void {
         <template #actions>
           <AppButton variant="ghost" @click="renameOpen = false">Cancel</AppButton>
           <AppButton :disabled="!renameValue.trim()" @click="renameNode">Rename</AppButton>
+        </template>
+      </AppDialog>
+
+      <AppDialog
+        :open="deleteSelectionOpen"
+        :title="`Delete ${selectionCount === 1 ? 'selected object' : `${selectionCount} selected objects`}?`"
+        description="Groups are removed safely: any unselected children stay in the model and move to the model root. Undo remains available during this editing session."
+        @close="deleteSelectionOpen = false"
+      >
+        <template #actions>
+          <AppButton variant="ghost" @click="deleteSelectionOpen = false">Cancel</AppButton>
+          <AppButton variant="danger" @click="deleteSelectedNodes">Delete Selection</AppButton>
         </template>
       </AppDialog>
 
@@ -1193,16 +1546,22 @@ function showOutliner(): void {
 .studio-menu .menu-action--danger { color: #ff959c; }
 
 .view-sheet,
-.snap-sheet {
+.snap-sheet,
+.mirror-sheet,
+.arrange-sheet {
   display: grid;
   gap: var(--space-5);
   padding-bottom: var(--space-2);
 }
 
 .view-sheet section,
-.snap-sheet section { display: grid; gap: var(--space-3); }
+.snap-sheet section,
+.mirror-sheet section,
+.arrange-sheet section { display: grid; gap: var(--space-3); }
 .view-sheet h3,
-.snap-sheet h3 { margin: 0; color: var(--color-text-muted); font-size: 0.76rem; }
+.snap-sheet h3,
+.mirror-sheet h3,
+.arrange-sheet h3 { margin: 0; color: var(--color-text-muted); font-size: 0.76rem; }
 .view-sheet p { margin: 0; color: var(--color-text-subtle); font-size: 0.68rem; line-height: 1.45; }
 
 .choice-grid,
@@ -1238,7 +1597,53 @@ function showOutliner(): void {
   font-size: 0.72rem;
   font-weight: 740;
 }
-.snap-sheet input { min-height: var(--touch-target); border: 0; background: transparent; color: var(--color-text); font-family: var(--font-mono); }
+.snap-sheet input {
+  min-height: var(--touch-target);
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+}
+
+.mirror-actions,
+.arrange-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem;
+}
+
+.mirror-actions button,
+.arrange-actions button {
+  min-height: var(--touch-target);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  padding: 0.55rem;
+  background: var(--color-input-bg);
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  font-weight: 740;
+}
+
+.mirror-actions button {
+  min-height: 4.25rem;
+  display: grid;
+  align-content: center;
+  gap: 0.18rem;
+  text-align: left;
+}
+
+.mirror-actions button:first-child,
+.arrange-actions button:not(:last-child) { border-color: #34784d; }
+.mirror-actions small { color: var(--color-text-subtle); font-size: 0.66rem; font-weight: 550; line-height: 1.35; }
+.arrange-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.arrange-actions button:disabled { opacity: 0.42; }
+
+.model-studio :deep(input:not([type='range'])),
+.model-studio :deep(select),
+.model-studio :deep(textarea) {
+  font-size: max(1rem, 16px);
+}
 
 .move-list { display: grid; gap: 0.42rem; padding-bottom: var(--space-2); }
 .move-list button {
@@ -1266,5 +1671,9 @@ function showOutliner(): void {
   .studio-topbar { min-height: calc(3.15rem + env(safe-area-inset-top)); }
   .studio-toolbar button { min-height: 2.85rem; }
   .studio-toolbar { padding-top: 0.22rem; padding-bottom: calc(0.22rem + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 370px) {
+  .arrange-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>

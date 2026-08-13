@@ -7,6 +7,7 @@ import type {
 
 import { cloneStudioCube, cloneStudioGroup, cloneStudioReference } from './modelFactory'
 import type { StudioHierarchyState } from './modelHierarchy'
+import { normalizeSelectionIds } from './modelProductivity'
 
 export interface ModelCommand {
   readonly label: string
@@ -161,6 +162,80 @@ export function createHierarchyCommand(
       const elementIds = new Set(elementSnapshots.map((element) => element.id))
       model.elements = model.elements.filter((element) => !elementIds.has(element.id))
       model.groups = model.groups.filter((entry) => entry.id !== groupSnapshot.id)
+    },
+  }
+}
+
+export function createNodesCommand(
+  elements: StudioModelElement[],
+  groups: StudioGroup[],
+  label: string,
+): ModelCommand {
+  const elementSnapshots = elements.map(cloneStudioCube)
+  const groupSnapshots = groups.map(cloneStudioGroup)
+  return {
+    label,
+    redo(model) {
+      for (const group of groupSnapshots) {
+        if (!model.groups.some((entry) => entry.id === group.id)) {
+          model.groups.push(cloneStudioGroup(group))
+        }
+      }
+      for (const element of elementSnapshots) {
+        if (!model.elements.some((entry) => entry.id === element.id)) {
+          model.elements.push(cloneStudioCube(element))
+        }
+      }
+    },
+    undo(model) {
+      const elementIds = new Set(elementSnapshots.map((element) => element.id))
+      const groupIds = new Set(groupSnapshots.map((group) => group.id))
+      model.elements = model.elements.filter((element) => !elementIds.has(element.id))
+      model.groups = model.groups.filter((group) => !groupIds.has(group.id))
+    },
+  }
+}
+
+export function deleteSelectionCommand(
+  model: StudioModel,
+  ids: readonly string[],
+): ModelCommand | undefined {
+  const normalized = normalizeSelectionIds(model, ids)
+  if (!normalized.length) return undefined
+  const selected = new Set(normalized)
+  const removedElements = model.elements
+    .map((element, index) => ({ element: cloneStudioCube(element), index }))
+    .filter(({ element }) => selected.has(element.id))
+  const removedGroups = model.groups
+    .map((group, index) => ({ group: cloneStudioGroup(group), index }))
+    .filter(({ group }) => selected.has(group.id))
+  const removedGroupIds = new Set(removedGroups.map(({ group }) => group.id))
+  const reparented = model.elements
+    .filter((element) => element.parentId && removedGroupIds.has(element.parentId) && !selected.has(element.id))
+    .map((element) => ({
+      before: cloneStudioCube(element),
+      after: { ...cloneStudioCube(element), parentId: undefined },
+    }))
+
+  return {
+    label: normalized.length === 1 ? 'Delete model object' : `Delete ${normalized.length} objects`,
+    redo(target) {
+      target.elements = target.elements.filter((element) => !selected.has(element.id))
+      target.groups = target.groups.filter((group) => !selected.has(group.id))
+      reparented.forEach(({ after }) => replaceElement(target, after))
+    },
+    undo(target) {
+      removedGroups.forEach(({ group, index }) => {
+        if (!target.groups.some((entry) => entry.id === group.id)) {
+          target.groups.splice(Math.min(index, target.groups.length), 0, cloneStudioGroup(group))
+        }
+      })
+      removedElements.forEach(({ element, index }) => {
+        if (!target.elements.some((entry) => entry.id === element.id)) {
+          target.elements.splice(Math.min(index, target.elements.length), 0, cloneStudioCube(element))
+        }
+      })
+      reparented.forEach(({ before }) => replaceElement(target, before))
     },
   }
 }

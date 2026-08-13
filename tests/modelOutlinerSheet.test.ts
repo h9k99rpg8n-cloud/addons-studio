@@ -10,7 +10,7 @@ const BottomSheetStub = {
 }
 
 describe('Model Studio Outliner', () => {
-  it('renders expandable hierarchy, duplicate actions, and reference lock state', async () => {
+  it('renders hierarchy status, touch actions, multi-selection, and reference lock state', async () => {
     const model = createEmptyStudioModel('project', 'Model', 'geometry.project.model')
     const cube = createStudioCube()
     const group = createStudioGroup(0, [cube])
@@ -44,9 +44,13 @@ describe('Model Studio Outliner', () => {
     expect(wrapper.text()).toContain('Cube · Group')
     expect(wrapper.text()).toContain('Locked · front')
 
-    await wrapper.get('[aria-label="Duplicate Group"]').trigger('click')
+    await wrapper.get('[aria-label="Group actions"]').trigger('click')
+    await wrapper.get('[aria-label="Lock Group"]').trigger('click')
+    await wrapper.get('.new-group').trigger('click')
     await wrapper.get('[aria-label="Unlock Front Guide"]').trigger('click')
-    expect(wrapper.emitted('duplicateNode')?.[0]).toEqual([group.id])
+    expect(wrapper.emitted('showActions')?.[0]).toEqual([group.id])
+    expect(wrapper.emitted('toggleNodeLock')?.[0]).toEqual([group.id])
+    expect(wrapper.emitted('setMultiSelect')?.[0]).toEqual([true])
     expect(wrapper.emitted('toggleReferenceLock')?.[0]).toEqual(['reference'])
   })
 })

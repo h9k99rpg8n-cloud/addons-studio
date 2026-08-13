@@ -10,6 +10,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Scope to be selected for the next development prompt; no future editor is implied as complete.
 
+## [0.0.3.6] - 2026-08-12
+
+### Added
+
+- Persistent Model Studio settings for Both/Positive/Negative Resize direction, Gizmos/Tactilismos/Hybrid control mode, Global/Local/Parent transform space, and an English/Spanish localization foundation.
+- Experimental hold-to-move, radial uniform Resize, and circular direct Rotate Tactilismos that coexist with empty-space orbit, pinch zoom, and two-finger pan.
+- Deliberate viewport/Outliner multi-selection with batch Move, Duplicate, Delete, visibility, lock, isolation, and Move to Group workflows.
+- Mirror in place and Duplicate + Mirror on X/Y/Z, bounds-based Min/Center/Max alignment, even distribution, and Duplicate Again with remembered translation offset.
+- Cube/group locking and editor-only isolation with explicit Outliner states and safe unlock access.
+- Regression coverage for center-preserving/directional Resize, pivots, gesture spikes, transform spaces, multi-selection, mirror IDs, alignment, distribution, locking, isolation, undo/redo, and settings migration.
+
+### Changed
+
+- Reworked Resize in Model Core so the default operation distributes a size delta evenly across both sides and keeps the visual center fixed on X/Y/Z, including rotated cubes and exact numeric edits.
+- Froze axis projection and world-per-pixel sensitivity at gesture start, bounded near-camera-axis sensitivity, and rejected non-finite or implausible Resize drag spikes.
+- Model records now normalize to internal schema version 3 while preserving Alpha 0.0.3.5 hierarchy, pivots, references, editor layout, and snapping data.
+- Transform gizmos visibly follow the selected Global, Local, or Parent basis; group rotations apply the same world-space axis to affected children.
+- Model Studio editable controls use at least 16 CSS pixels so iPhone Safari does not trigger unwanted focus zoom.
+
+### Preserved
+
+- Original Addons Studio custom gizmo geometry, large invisible touch pickers, raycasting, and pointer-event implementation; default Three.js `TransformControls` remain unused.
+- Project storage/folders, references, autosave, compact command history, camera views, green grid, one/two viewports, maximize, PWA shell, and GitHub Pages deployment architecture.
+
 ## [0.0.3.5] - 2026-08-12
 
 ### Added
@@ -102,7 +126,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - GitHub Actions workflows for CI and GitHub Pages.
 - Project, contribution, security, architecture, license, and third-party documentation.
 
-[Unreleased]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.5...HEAD
+[Unreleased]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6...HEAD
+[0.0.3.6]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.5...v0.0.3.6
 [0.0.3.5]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3...v0.0.3.5
 [0.0.3]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.1-dev...v0.0.2
