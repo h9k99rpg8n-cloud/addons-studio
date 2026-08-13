@@ -791,7 +791,9 @@ onBeforeUnmount(() => {
       {{ selectedNode()?.name }}
     </div>
     <output v-if="liveTransform" class="transform-value" aria-live="polite">{{ liveTransform }}</output>
-    <div v-else-if="active" class="gesture-help">Empty drag: orbit · Pinch: zoom · Two fingers: pan</div>
+    <div v-else-if="active && !webglError" class="gesture-help">
+      Empty drag: orbit · Pinch: zoom · Two fingers: pan
+    </div>
   </div>
 </template>
 
