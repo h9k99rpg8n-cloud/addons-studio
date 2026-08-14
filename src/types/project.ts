@@ -89,6 +89,7 @@ export const RESOURCE_CATEGORY_IDS = [
   'entities',
   'models',
   'materials',
+  'textures',
   'animations',
   'particles',
   'audio',
