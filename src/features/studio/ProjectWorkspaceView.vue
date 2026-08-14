@@ -13,6 +13,7 @@ import ProjectIcon from '@/components/project/ProjectIcon.vue'
 import ResourceCategoryCard from '@/components/project/ResourceCategoryCard.vue'
 import { toAppError } from '@/core/errors/AppError'
 import { modelRepository } from '@/core/model/modelRepository'
+import { textureRepository } from '@/core/texture/textureRepository'
 import { RESOURCE_CATEGORIES } from '@/features/studio/resourceCategories'
 import { useProjectStore } from '@/stores/projects'
 import { useLocaleStore } from '@/stores/locale'
@@ -29,6 +30,7 @@ const loadError = ref('')
 const addOpen = ref(false)
 const projectMenuOpen = ref(false)
 const modelCount = ref(0)
+const materialCount = ref(0)
 
 const project = computed(() =>
   projects.activeProject?.id === props.id
@@ -47,6 +49,7 @@ onMounted(async () => {
     await projects.loadProjects()
     await projects.openProject(props.id)
     modelCount.value = await modelRepository.countModels(props.id)
+    materialCount.value = await textureRepository.countMaterials(props.id)
   } catch (error) {
     loadError.value = toAppError(error, locale.t('Addons Studio could not open this project.')).userMessage
   } finally {
@@ -57,6 +60,10 @@ onMounted(async () => {
 function openCategory(id: string, label: string): void {
   if (id === 'models') {
     void router.push({ name: 'models', params: { projectId: props.id } })
+    return
+  }
+  if (id === 'materials' || id === 'textures') {
+    void router.push({ name: 'texture-models', params: { projectId: props.id } })
     return
   }
   toasts.push({
@@ -71,11 +78,17 @@ function selectTemplate(template: ResourceTemplate): void {
     void router.push({ name: 'models', params: { projectId: props.id } })
     return
   }
+  if ((template.category === 'materials' || template.category === 'textures') && template.status === 'available') {
+    void router.push({ name: 'texture-models', params: { projectId: props.id } })
+    return
+  }
   toasts.push({ type: 'info', message: template.description })
 }
 
 function categoryCount(id: string): number {
-  return id === 'models' ? modelCount.value : 0
+  if (id === 'models') return modelCount.value
+  if (id === 'materials') return materialCount.value
+  return 0
 }
 
 function afterDelete(): void {
@@ -138,7 +151,7 @@ function afterDelete(): void {
             <p class="eyebrow">{{ locale.t('Project Workspace') }}</p>
             <h2 id="resources-heading">{{ locale.t('Resources') }}</h2>
           </div>
-          <span>{{ locale.t('{count} total', { count: modelCount }) }}</span>
+          <span>{{ locale.t('{count} total', { count: modelCount + materialCount }) }}</span>
         </header>
         <div class="resource-grid">
           <ResourceCategoryCard
@@ -154,9 +167,9 @@ function afterDelete(): void {
       <aside class="foundation-note">
         <StudioIcon name="workspace" :size="23" />
         <div>
-          <strong>{{ locale.t('Model Studio is now available') }}</strong>
+          <strong>{{ locale.t('Model Core + Texture Core are available') }}</strong>
           <p>
-            {{ locale.t('Create local cube-based models with touch transforms. Other resource editors and Minecraft export remain clearly marked for future updates.') }}
+            {{ locale.t('Create cube geometry in Model Studio, then open Materials or Texture Core to import textures, edit pixels, and prepare per-face UV assignments.') }}
           </p>
         </div>
       </aside>
