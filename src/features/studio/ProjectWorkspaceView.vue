@@ -62,7 +62,11 @@ function openCategory(id: string, label: string): void {
     void router.push({ name: 'models', params: { projectId: props.id } })
     return
   }
-  if (id === 'materials' || id === 'textures') {
+  if (id === 'materials') {
+    void router.push({ name: 'materials', params: { projectId: props.id } })
+    return
+  }
+  if (id === 'textures') {
     void router.push({ name: 'texture-models', params: { projectId: props.id } })
     return
   }
@@ -78,7 +82,11 @@ function selectTemplate(template: ResourceTemplate): void {
     void router.push({ name: 'models', params: { projectId: props.id } })
     return
   }
-  if ((template.category === 'materials' || template.category === 'textures') && template.status === 'available') {
+  if (template.category === 'materials' && template.status === 'available') {
+    void router.push({ name: 'materials', params: { projectId: props.id } })
+    return
+  }
+  if (template.category === 'textures' && template.status === 'available') {
     void router.push({ name: 'texture-models', params: { projectId: props.id } })
     return
   }
@@ -169,7 +177,7 @@ function afterDelete(): void {
         <div>
           <strong>{{ locale.t('Model Core + Texture Core are available') }}</strong>
           <p>
-            {{ locale.t('Create cube geometry in Model Studio, then open Materials or Texture Core to import textures, edit pixels, and prepare per-face UV assignments.') }}
+            {{ locale.t('Create geometry in Model Studio, organize reusable project materials in Materials, then open Texture Core for model-specific UV bindings and texturing.') }}
           </p>
         </div>
       </aside>
