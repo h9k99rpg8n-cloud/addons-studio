@@ -74,8 +74,8 @@ export class AddonsStudioDatabase extends Dexie {
       models: '&id, projectId, identifier, updatedAt, [projectId+updatedAt], [projectId+identifier]',
       modelReferenceAssets: '&id, modelId, projectId, createdAt, [modelId+createdAt]',
       modelEditorAssets: '&id, modelId, projectId, kind, createdAt, [modelId+kind], [modelId+createdAt]',
-      textureAssets: '&id, modelId, projectId, updatedAt, [modelId+updatedAt], [projectId+updatedAt]',
-      materials: '&id, modelId, projectId, identifier, updatedAt, [modelId+updatedAt], [projectId+identifier]',
+      textureAssets: '&id, projectId, updatedAt, [projectId+updatedAt]',
+      materials: '&id, projectId, identifier, updatedAt, [projectId+updatedAt], [projectId+identifier]',
       textureBindings: '&id, modelId, projectId, cubeId, materialId, updatedAt, [modelId+cubeId], [modelId+materialId]',
     })
   }
