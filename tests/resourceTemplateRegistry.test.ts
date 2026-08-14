@@ -13,14 +13,19 @@ describe('ResourceTemplateRegistry', () => {
     expect(registry.get('material')).toMatchObject({
       category: 'materials',
       name: 'Material',
-      status: 'coming_soon',
+      status: 'available',
+    })
+    expect(registry.get('texture')).toMatchObject({
+      category: 'textures',
+      name: 'Texture Core',
+      status: 'available',
     })
     expect(registry.get('model')).toMatchObject({
       category: 'models',
       name: 'Model',
       status: 'available',
     })
-    expect(registry.list()).toHaveLength(11)
+    expect(registry.list()).toHaveLength(12)
   })
 
   it('prevents duplicate template ids', () => {
