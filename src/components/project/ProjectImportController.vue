@@ -74,7 +74,7 @@ async function inspectFile(event: Event): Promise<void> {
     previewOpen.value = true
   } catch (error) {
     status.value = 'error'
-    errorMessage.value = toAppError(error, 'Addons Studio could not inspect this project package.').userMessage
+    errorMessage.value = toAppError(error, locale.t('Addons Studio could not inspect this project package.')).userMessage
   } finally {
     fileInput.value = ''
   }
@@ -92,11 +92,11 @@ async function confirmImport(): Promise<void> {
     await projects.loadProjects(true)
     importedProject.value = project
     status.value = 'done'
-    toasts.push({ type: 'success', message: 'Project imported successfully.' })
+    toasts.push({ type: 'success', message: locale.t('Project imported successfully.') })
     emit('imported', project)
   } catch (error) {
     status.value = 'error'
-    errorMessage.value = toAppError(error, 'Addons Studio could not import this project.').userMessage
+    errorMessage.value = toAppError(error, locale.t('Addons Studio could not import this project.')).userMessage
   }
 }
 

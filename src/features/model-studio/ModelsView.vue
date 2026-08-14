@@ -56,7 +56,7 @@ onMounted(async () => {
     await projects.openProject(props.projectId)
     models.value = await modelRepository.listModels(props.projectId)
   } catch (error) {
-    loadError.value = toAppError(error, 'Addons Studio could not load model resources.').userMessage
+    loadError.value = toAppError(error, locale.t('Addons Studio could not load model resources.')).userMessage
   } finally {
     loading.value = false
   }
@@ -88,13 +88,13 @@ async function createModel(): Promise<void> {
     })
     models.value.unshift(model)
     createOpen.value = false
-    toasts.push({ type: 'success', message: 'Model created' })
+    toasts.push({ type: 'success', message: locale.t('Model created') })
     await router.push({
       name: 'model-studio',
       params: { projectId: props.projectId, modelId: model.id },
     })
   } catch (error) {
-    identifierError.value = toAppError(error, 'Addons Studio could not create this model.').userMessage
+    identifierError.value = toAppError(error, locale.t('Addons Studio could not create this model.')).userMessage
   } finally {
     busy.value = false
   }
@@ -113,11 +113,11 @@ async function deleteModel(): Promise<void> {
     await modelRepository.deleteModel(id)
     models.value = models.value.filter((model) => model.id !== id)
     deleteOpen.value = false
-    toasts.push({ type: 'success', message: 'Model deleted' })
+    toasts.push({ type: 'success', message: locale.t('Model deleted') })
   } catch (error) {
     toasts.push({
       type: 'error',
-      message: toAppError(error, 'Addons Studio could not delete this model.').userMessage,
+      message: toAppError(error, locale.t('Addons Studio could not delete this model.')).userMessage,
     })
   } finally {
     busy.value = false
@@ -135,7 +135,7 @@ async function importJson(event: Event): Promise<void> {
   busy.value = true
   try {
     if (!file.name.toLowerCase().endsWith('.json')) {
-      throw new Error('Choose a JSON model file.')
+      throw new Error(locale.t('Choose a JSON model file.'))
     }
     const result = importModelJson(await file.text(), props.projectId)
     const imported = await modelRepository.importModel(result.model)
@@ -143,8 +143,10 @@ async function importJson(event: Event): Promise<void> {
     toasts.push({
       type: 'success',
       message: result.draft.warnings.length
-        ? `Geometry imported. ${result.draft.warnings.join(' ')}`
-        : 'Model imported successfully.',
+        ? locale.t('Geometry imported. {warning}', {
+            warning: result.draft.warnings.map((warning) => locale.t(warning)).join(' '),
+          })
+        : locale.t('Model imported successfully.'),
     })
     await router.push({
       name: 'model-studio',
@@ -153,7 +155,7 @@ async function importJson(event: Event): Promise<void> {
   } catch (error) {
     toasts.push({
       type: 'error',
-      message: toAppError(error, 'This JSON file is not a recognized model format.').userMessage,
+      message: toAppError(error, locale.t('This JSON file is not a recognized model format.')).userMessage,
     })
   } finally {
     input.value = ''
@@ -167,21 +169,21 @@ async function importJson(event: Event): Promise<void> {
     <header class="models-topbar">
       <IconButton
         icon="arrow-left"
-        label="Back to project workspace"
+        :label="locale.t('Back to project workspace')"
         @click="router.push({ name: 'workspace', params: { id: projectId } })"
       />
-      <div><strong>{{ locale.t('Models') }}</strong><small>{{ project?.name ?? 'Project' }}</small></div>
-      <IconButton icon="plus" label="Create model" variant="surface" @click="startCreate" />
+      <div><strong>{{ locale.t('Models') }}</strong><small>{{ project?.name ?? locale.t('Project') }}</small></div>
+      <IconButton icon="plus" :label="locale.t('Create Model')" variant="surface" @click="startCreate" />
     </header>
 
-    <section v-if="loading" class="models-content models-grid" aria-label="Loading models">
+    <section v-if="loading" class="models-content models-grid" :aria-label="locale.t('Loading models')">
       <div v-for="index in 3" :key="index" class="skeleton model-skeleton" />
     </section>
 
     <section v-else-if="loadError || !project" class="model-empty">
       <span><AppIcon name="alert-triangle" :size="30" /></span>
       <h1>{{ locale.t('Models unavailable') }}</h1>
-      <p>{{ loadError || 'This local project could not be found.' }}</p>
+      <p>{{ loadError || locale.t('This local project could not be found.') }}</p>
       <AppButton @click="router.replace({ name: 'projects' })">{{ locale.t('Back to Projects') }}</AppButton>
     </section>
 
@@ -208,14 +210,14 @@ async function importJson(event: Event): Promise<void> {
               <span class="model-card__copy">
                 <strong>{{ model.name }}</strong>
                 <code>{{ model.identifier }}</code>
-                <small>{{ model.elements.length }} cubes · {{ model.references.length }} references</small>
+                <small>{{ locale.t('{cubes} cubes · {references} references', { cubes: model.elements.length, references: model.references.length }) }}</small>
               </span>
               <AppIcon name="chevron-right" :size="19" />
             </button>
             <IconButton
               class="model-card__delete"
               icon="trash"
-              :label="`Delete ${model.name}`"
+              :label="locale.t('Delete {name}', { name: model.name })"
               variant="danger"
               @click="confirmDelete(model)"
             />
@@ -289,8 +291,8 @@ async function importJson(event: Event): Promise<void> {
 
     <AppDialog
       :open="deleteOpen"
-      :title="`Delete “${selectedModel?.name ?? 'model'}”?`"
-      description="The model and its reference images will be removed from this device. The project itself stays safe."
+      :title="locale.t('Delete “{name}”?', { name: selectedModel?.name ?? locale.t('Model') })"
+      :description="locale.t('The model and its reference images will be removed from this device. The project itself stays safe.')"
       @close="deleteOpen = false"
     >
       <template #actions>

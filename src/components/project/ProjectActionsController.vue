@@ -49,6 +49,10 @@ const packageStageLabels: Readonly<Record<ProjectPackageStage, string>> = {
   finishing: 'Creating package',
 }
 
+function packageStageLabel(stage: ProjectPackageStage): string {
+  return locale.t(packageStageLabels[stage])
+}
+
 watch(
   () => props.project,
   (project) => {
@@ -83,12 +87,14 @@ async function move(folderId?: string): Promise<void> {
     const folder = projects.folders.find((entry) => entry.id === folderId)
     toasts.push({
       type: 'success',
-      message: folder ? `Project moved to ${folder.name}` : 'Project moved to My Projects',
+      message: folder
+        ? locale.t('Project moved to {name}', { name: folder.name })
+        : locale.t('Project moved to My Projects'),
     })
   } catch (error) {
     toasts.push({
       type: 'error',
-      message: toAppError(error, 'Addons Studio could not move this project.').userMessage,
+      message: toAppError(error, locale.t('Addons Studio could not move this project.')).userMessage,
     })
   } finally {
     busy.value = false
@@ -98,7 +104,7 @@ async function move(folderId?: string): Promise<void> {
 async function rename(): Promise<void> {
   if (!props.project) return
   if (!renameValue.value.trim()) {
-    renameError.value = 'Project name is required.'
+    renameError.value = locale.t('Project name is required.')
     return
   }
 
@@ -107,9 +113,9 @@ async function rename(): Promise<void> {
   try {
     await projects.renameProject(props.project.id, renameValue.value)
     renameOpen.value = false
-    toasts.push({ type: 'success', message: 'Project renamed' })
+    toasts.push({ type: 'success', message: locale.t('Project renamed') })
   } catch (error) {
-    renameError.value = toAppError(error, 'Addons Studio could not rename this project.').userMessage
+    renameError.value = toAppError(error, locale.t('Addons Studio could not rename this project.')).userMessage
   } finally {
     busy.value = false
   }
@@ -121,12 +127,12 @@ async function duplicate(): Promise<void> {
   busy.value = true
   try {
     const duplicateProject = await projects.duplicateProject(props.project.id)
-    toasts.push({ type: 'success', message: 'Project duplicated' })
+    toasts.push({ type: 'success', message: locale.t('Project duplicated') })
     emit('duplicated', duplicateProject)
   } catch (error) {
     toasts.push({
       type: 'error',
-      message: toAppError(error, 'Addons Studio could not duplicate this project.').userMessage,
+      message: toAppError(error, locale.t('Addons Studio could not duplicate this project.')).userMessage,
     })
   } finally {
     busy.value = false
@@ -148,10 +154,10 @@ async function exportProject(): Promise<void> {
     )
     downloadBlob(result.blob, result.filename)
     exportStatus.value = 'done'
-    toasts.push({ type: 'success', message: 'Project package exported' })
+    toasts.push({ type: 'success', message: locale.t('Project package exported') })
   } catch (error) {
     exportStatus.value = 'error'
-    exportError.value = toAppError(error, 'Addons Studio could not export this project.').userMessage
+    exportError.value = toAppError(error, locale.t('Addons Studio could not export this project.')).userMessage
   }
 }
 
@@ -162,12 +168,12 @@ async function remove(): Promise<void> {
   try {
     await projects.deleteProject(id)
     deleteOpen.value = false
-    toasts.push({ type: 'success', message: 'Project deleted' })
+    toasts.push({ type: 'success', message: locale.t('Project deleted') })
     emit('deleted', id)
   } catch (error) {
     toasts.push({
       type: 'error',
-      message: toAppError(error, 'Addons Studio could not delete this project.').userMessage,
+      message: toAppError(error, locale.t('Addons Studio could not delete this project.')).userMessage,
     })
   } finally {
     busy.value = false
@@ -209,14 +215,14 @@ async function remove(): Promise<void> {
   <BottomSheet
     :open="exportProgressOpen"
     :title="locale.t(exportStatus === 'working' ? 'Exporting Project' : exportStatus === 'done' ? 'Project exported' : 'Export stopped safely')"
-    :description="exportStatus === 'working' ? packageStageLabels[exportStage] : undefined"
+    :description="exportStatus === 'working' ? packageStageLabel(exportStage) : undefined"
     @close="exportStatus === 'working' ? undefined : (exportProgressOpen = false)"
   >
     <div class="export-progress" :class="`export-progress--${exportStatus}`" aria-live="polite">
       <span v-if="exportStatus === 'working'" class="export-spinner" />
       <span v-else><AppIcon :name="exportStatus === 'done' ? 'check' : 'alert-triangle'" :size="29" /></span>
-      <strong>{{ exportStatus === 'working' ? packageStageLabels[exportStage] : exportStatus === 'done' ? `${project?.name ?? 'Project'} is ready` : 'No project data was changed' }}</strong>
-      <p>{{ exportStatus === 'working' ? 'Keep Addons Studio open while the package is prepared.' : exportStatus === 'done' ? 'The .addonsstudio download contains a validated, restorable local project package.' : exportError }}</p>
+      <strong>{{ exportStatus === 'working' ? packageStageLabel(exportStage) : exportStatus === 'done' ? locale.t('{name} is ready', { name: project?.name ?? locale.t('Project') }) : locale.t('No project data was changed') }}</strong>
+      <p>{{ exportStatus === 'working' ? locale.t('Keep Addons Studio open while the package is prepared.') : exportStatus === 'done' ? locale.t('The .addonsstudio download contains a validated, restorable local project package.') : exportError }}</p>
       <AppButton v-if="exportStatus !== 'working'" block variant="secondary" @click="exportProgressOpen = false">{{ locale.t('Close') }}</AppButton>
     </div>
   </BottomSheet>
@@ -224,7 +230,7 @@ async function remove(): Promise<void> {
   <BottomSheet
     :open="moveOpen && Boolean(project)"
     :title="locale.t('Move Project')"
-    :description="`Choose where to keep “${project?.name ?? 'project'}”.`"
+    :description="locale.t('Choose where to keep “{name}”.', { name: project?.name ?? locale.t('project') })"
     @close="moveOpen = false"
   >
     <div class="move-list">
@@ -235,7 +241,7 @@ async function remove(): Promise<void> {
         @click="move(undefined)"
       >
         <span><AppIcon name="layers" :size="21" /></span>
-        <span><strong>{{ locale.t('My Projects') }}</strong><small>Root project list</small></span>
+        <span><strong>{{ locale.t('My Projects') }}</strong><small>{{ locale.t('Root project list') }}</small></span>
         <AppIcon v-if="!project?.folderId" name="check" :size="19" />
       </button>
       <button
@@ -247,21 +253,21 @@ async function remove(): Promise<void> {
         @click="move(folder.id)"
       >
         <span><AppIcon name="folder-open" :size="21" /></span>
-        <span><strong>{{ folder.name }}</strong><small>Project folder</small></span>
+        <span><strong>{{ folder.name }}</strong><small>{{ locale.t('Project folder') }}</small></span>
         <AppIcon v-if="project?.folderId === folder.id" name="check" :size="19" />
       </button>
     </div>
     <p v-if="!projects.folders.length" class="move-empty">
-      Create a folder from My Projects first. This project is already at the root.
+      {{ locale.t('Create a folder from My Projects first. This project is already at the root.') }}
     </p>
   </BottomSheet>
 
   <AppDialog
     :open="renameOpen"
-    :title="`Rename “${project?.name ?? 'project'}”`"
+    :title="locale.t('Rename “{name}”', { name: project?.name ?? locale.t('project') })"
     @close="renameOpen = false"
   >
-    <label class="field-label" for="rename-project">Project Name</label>
+    <label class="field-label" for="rename-project">{{ locale.t('Project Name') }}</label>
     <input
       id="rename-project"
       v-model="renameValue"
@@ -279,13 +285,13 @@ async function remove(): Promise<void> {
 
   <AppDialog
     :open="deleteOpen"
-    :title="`Delete “${project?.name ?? 'project'}”?`"
-    description="This cannot be undone. Project data, models, references, and local recovery snapshots will be removed."
+    :title="locale.t('Delete “{name}”?', { name: project?.name ?? locale.t('project') })"
+    :description="locale.t('This cannot be undone. Project data, models, references, and local recovery snapshots will be removed.')"
     @close="deleteOpen = false"
   >
     <div class="delete-warning">
       <AppIcon name="alert-triangle" :size="22" />
-      <span>This action only affects this device.</span>
+      <span>{{ locale.t('This action only affects this device.') }}</span>
     </div>
     <template #actions>
       <AppButton variant="ghost" @click="deleteOpen = false">{{ locale.t('Cancel') }}</AppButton>

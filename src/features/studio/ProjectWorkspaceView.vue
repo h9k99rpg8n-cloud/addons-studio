@@ -48,7 +48,7 @@ onMounted(async () => {
     await projects.openProject(props.id)
     modelCount.value = await modelRepository.countModels(props.id)
   } catch (error) {
-    loadError.value = toAppError(error, 'Addons Studio could not open this project.').userMessage
+    loadError.value = toAppError(error, locale.t('Addons Studio could not open this project.')).userMessage
   } finally {
     loading.value = false
   }
@@ -61,7 +61,7 @@ function openCategory(id: string, label: string): void {
   }
   toasts.push({
     type: 'info',
-    message: `${label} tools are coming in a future Addons Studio update.`,
+    message: locale.t('{name} tools are coming in a future Addons Studio update.', { name: locale.t(label) }),
   })
 }
 
@@ -88,22 +88,22 @@ function afterDelete(): void {
     <header class="workspace-topbar">
       <IconButton
         icon="arrow-left"
-        label="Back to projects"
+        :label="locale.t('Back to projects')"
         @click="router.push({ name: 'projects' })"
       />
       <div>
-        <strong>{{ project?.name ?? 'Project Workspace' }}</strong>
+        <strong>{{ project?.name ?? locale.t('Project Workspace title') }}</strong>
         <small v-if="project">{{ project.namespace }}</small>
       </div>
       <IconButton
         icon="more-vertical"
-        label="Project menu"
+        :label="locale.t('Project menu')"
         :disabled="!project"
         @click="projectMenuOpen = true"
       />
     </header>
 
-    <section v-if="loading" class="workspace-loading" aria-label="Opening project">
+    <section v-if="loading" class="workspace-loading" :aria-label="locale.t('Opening project')">
       <div class="skeleton workspace-loading__hero" />
       <div class="workspace-loading__grid">
         <div v-for="index in 8" :key="index" class="skeleton" />
@@ -112,8 +112,8 @@ function afterDelete(): void {
 
     <section v-else-if="loadError || !project" class="workspace-error">
       <span><AppIcon name="alert-triangle" :size="30" /></span>
-      <h1>Project unavailable</h1>
-      <p>{{ loadError || 'This local project could not be found.' }}</p>
+      <h1>{{ locale.t('Project unavailable') }}</h1>
+      <p>{{ loadError || locale.t('This local project could not be found.') }}</p>
       <AppButton @click="router.replace({ name: 'projects' })">{{ locale.t('Back to Projects') }}</AppButton>
     </section>
 
@@ -122,10 +122,10 @@ function afterDelete(): void {
         <ProjectIcon :icon="project.icon" size="large" />
         <div>
           <div class="project-overview__badges">
-            <AppBadge tone="accent">{{ projectTypeLabels[project.projectType] }}</AppBadge>
+            <AppBadge tone="accent">{{ locale.t(projectTypeLabels[project.projectType]) }}</AppBadge>
             <AppBadge>{{ project.targetVersion }}</AppBadge>
-            <AppBadge>Alpha workspace</AppBadge>
-            <AppBadge v-if="project.experimentalFeatures" tone="warning">Experimental</AppBadge>
+            <AppBadge>{{ locale.t('Alpha workspace') }}</AppBadge>
+            <AppBadge v-if="project.experimentalFeatures" tone="warning">{{ locale.t('Experimental') }}</AppBadge>
           </div>
           <h1>{{ project.name }}</h1>
           <p>{{ project.description || locale.t('A clean Bedrock project ready for future resources.') }}</p>
@@ -138,7 +138,7 @@ function afterDelete(): void {
             <p class="eyebrow">{{ locale.t('Project Workspace') }}</p>
             <h2 id="resources-heading">{{ locale.t('Resources') }}</h2>
           </div>
-          <span>{{ modelCount }} total</span>
+          <span>{{ locale.t('{count} total', { count: modelCount }) }}</span>
         </header>
         <div class="resource-grid">
           <ResourceCategoryCard

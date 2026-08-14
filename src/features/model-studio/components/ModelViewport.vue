@@ -1132,7 +1132,7 @@ async function initialize(): Promise<void> {
     resize()
     applyCameraView()
   } catch (error) {
-    webglError.value = '3D modeling is not available on this device or browser.'
+    webglError.value = locale.t('3D modeling is not available on this device or browser.')
     emit('error', webglError.value)
     console.warn('[Addons Studio] Model viewport initialization failed', error)
   }

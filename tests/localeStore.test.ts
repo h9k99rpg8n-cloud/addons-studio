@@ -17,6 +17,9 @@ describe('English and Spanish localization', () => {
     expect(locale.t('Model Studio Settings')).toBe('Ajustes de Model Studio')
     expect(locale.t('Touch Gizmo')).toBe('Gizmo táctil')
     expect(locale.t('Multi-select')).toBe('Multiselección')
+    expect(locale.t('Project package exported')).toBe('Paquete de proyecto exportado')
+    expect(locale.t('{name} is ready', { name: 'Río Grande' })).toBe('Río Grande está listo')
+    expect(locale.t('3D modeling is not available on this device or browser.')).toBe('El modelado 3D no está disponible en este dispositivo o navegador.')
     expect(locale.t('geometry.rio_grande.barrel')).toBe('geometry.rio_grande.barrel')
   })
 
