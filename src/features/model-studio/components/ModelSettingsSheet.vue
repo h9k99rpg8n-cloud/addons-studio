@@ -152,7 +152,9 @@ function resetCamera(): void {
               type="button"
               :class="{ active: settings.transformSpace === space }"
               @click="updateModeling('transformSpace', space)"
-            >{{ locale.t(space[0]!.toUpperCase() + space.slice(1)) }}</button>
+            >
+              {{ locale.t(space[0]!.toUpperCase() + space.slice(1)) }}
+            </button>
           </div>
           <p>{{ locale.t('Use the viewport quick selector to change this without reopening Settings.') }}</p>
         </fieldset>
