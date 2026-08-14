@@ -38,7 +38,7 @@ describe('database schema', () => {
       '[projectId+identifier]',
     )
     expect(database.textureAssets.schema.indexes.map((index) => index.name)).toContain(
-      '[modelId+updatedAt]',
+      '[projectId+updatedAt]',
     )
     expect(database.textureBindings.schema.indexes.map((index) => index.name)).toContain(
       '[modelId+cubeId]',
