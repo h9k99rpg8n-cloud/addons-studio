@@ -2,7 +2,7 @@
 withDefaults(
   defineProps<{
     variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
-    size?: 'regular' | 'large'
+    size?: 'small' | 'regular' | 'large'
     type?: 'button' | 'submit' | 'reset'
     disabled?: boolean
     loading?: boolean
@@ -84,6 +84,12 @@ withDefaults(
 .app-button--danger {
   background: var(--color-danger);
   color: white;
+}
+
+.app-button--small {
+  min-height: var(--touch-target);
+  padding: 0.48rem 0.72rem;
+  font-size: 0.78rem;
 }
 
 .app-button--large {

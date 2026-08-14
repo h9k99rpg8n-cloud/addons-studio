@@ -12,9 +12,10 @@ describe('database schema', () => {
     await database.delete()
   })
 
-  it('exposes the versioned project, folder, model, reference, snapshot, and settings stores', () => {
-    expect(DATABASE_SCHEMA_VERSION).toBe(3)
+  it('exposes the versioned project, model, editor asset, and Texture Core stores', () => {
+    expect(DATABASE_SCHEMA_VERSION).toBe(4)
     expect(database.tables.map((table) => table.name).sort()).toEqual([
+      'materials',
       'modelEditorAssets',
       'modelReferenceAssets',
       'models',
@@ -22,6 +23,8 @@ describe('database schema', () => {
       'projects',
       'settings',
       'snapshots',
+      'textureAssets',
+      'textureBindings',
     ])
     expect(database.projects.schema.primKey.name).toBe('id')
     expect(database.snapshots.schema.indexes.map((index) => index.name)).toContain(
@@ -31,6 +34,15 @@ describe('database schema', () => {
       '[projectId+identifier]',
     )
     expect(database.projects.schema.indexes.map((index) => index.name)).toContain('folderId')
+    expect(database.materials.schema.indexes.map((index) => index.name)).toContain(
+      '[projectId+identifier]',
+    )
+    expect(database.textureAssets.schema.indexes.map((index) => index.name)).toContain(
+      '[projectId+updatedAt]',
+    )
+    expect(database.textureBindings.schema.indexes.map((index) => index.name)).toContain(
+      '[modelId+cubeId]',
+    )
   })
 
   it('upgrades an Alpha 0.0.2 database without losing projects', async () => {
@@ -62,6 +74,9 @@ describe('database schema', () => {
     expect((await upgraded.projects.get('legacy-project'))?.name).toBe('Legacy Project')
     expect(upgraded.tables.map((table) => table.name)).toContain('models')
     expect(upgraded.tables.map((table) => table.name)).toContain('projectFolders')
+    expect(upgraded.tables.map((table) => table.name)).toContain('materials')
+    expect(upgraded.tables.map((table) => table.name)).toContain('textureAssets')
+    expect(upgraded.tables.map((table) => table.name)).toContain('textureBindings')
     upgraded.close()
     await upgraded.delete()
   })
@@ -99,6 +114,45 @@ describe('database schema', () => {
     })
     expect(migrated?.blob).toBeDefined()
     expect(migrated?.blob).toMatchObject({ type: 'image/png' })
+    upgraded.close()
+    await upgraded.delete()
+  })
+
+  it('upgrades schema 3 to Texture Core stores without changing existing model data', async () => {
+    const name = `addons-studio-texture-upgrade-${crypto.randomUUID()}`
+    const legacy = new Dexie(name)
+    legacy.version(3).stores({
+      projects: '&id, name, namespace, folderId, updatedAt',
+      snapshots: '&id, projectId, createdAt, [projectId+createdAt]',
+      settings: '&key, updatedAt',
+      projectFolders: '&id, name, createdAt, updatedAt',
+      models: '&id, projectId, identifier, updatedAt, [projectId+updatedAt], [projectId+identifier]',
+      modelReferenceAssets: '&id, modelId, projectId, createdAt, [modelId+createdAt]',
+      modelEditorAssets: '&id, modelId, projectId, kind, createdAt, [modelId+kind], [modelId+createdAt]',
+    })
+    await legacy.table('models').add({
+      id: 'existing-model',
+      projectId: 'existing-project',
+      identifier: 'geometry.existing',
+      name: 'Existing Model',
+      elements: [],
+      groups: [],
+      folders: [],
+      references: [],
+      editor: {},
+      createdAt: 1,
+      updatedAt: 2,
+      schemaVersion: 1,
+      revision: 1,
+    })
+    legacy.close()
+
+    const upgraded = new AddonsStudioDatabase(name)
+    await upgraded.open()
+    expect((await upgraded.models.get('existing-model'))?.name).toBe('Existing Model')
+    expect(await upgraded.materials.count()).toBe(0)
+    expect(await upgraded.textureAssets.count()).toBe(0)
+    expect(await upgraded.textureBindings.count()).toBe(0)
     upgraded.close()
     await upgraded.delete()
   })

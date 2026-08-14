@@ -54,6 +54,24 @@ export const router = createRouter({
       props: true,
     },
     {
+      path: '/project/:projectId/materials',
+      name: 'materials',
+      component: () => import('@/features/texture-core/MaterialsView.vue'),
+      props: true,
+    },
+    {
+      path: '/project/:projectId/textures',
+      name: 'texture-models',
+      component: () => import('@/features/texture-core/TextureModelsView.vue'),
+      props: true,
+    },
+    {
+      path: '/project/:projectId/textures/:modelId',
+      name: 'texture-core',
+      component: () => import('@/features/texture-core/TextureCoreView.vue'),
+      props: true,
+    },
+    {
       path: '/learn',
       name: 'learn',
       component: () => import('@/features/learn/LearnView.vue'),

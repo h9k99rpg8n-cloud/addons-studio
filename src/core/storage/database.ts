@@ -8,6 +8,7 @@ import type {
   StudioProjectFolder,
   StudioSetting,
 } from '@/types/project'
+import type { StudioMaterial, StudioTextureAsset, StudioTextureBinding } from '@/types/texture'
 
 export const DATABASE_NAME = 'addons-studio'
 
@@ -20,6 +21,9 @@ export class AddonsStudioDatabase extends Dexie {
   /** Alpha 0.0.3–0.0.3.6 compatibility store. New writes use modelEditorAssets. */
   modelReferenceAssets!: Table<ModelEditorAsset, string>
   modelEditorAssets!: Table<ModelEditorAsset, string>
+  textureAssets!: Table<StudioTextureAsset, string>
+  materials!: Table<StudioMaterial, string>
+  textureBindings!: Table<StudioTextureBinding, string>
 
   constructor(name = DATABASE_NAME) {
     super(name)
@@ -41,7 +45,7 @@ export class AddonsStudioDatabase extends Dexie {
       modelReferenceAssets: '&id, modelId, projectId, createdAt, [modelId+createdAt]',
     })
 
-    this.version(DATABASE_SCHEMA_VERSION).stores({
+    this.version(3).stores({
       projects:
         '&id, name, namespace, folderId, projectType, targetVersion, createdAt, updatedAt, schemaVersion',
       snapshots: '&id, projectId, createdAt, [projectId+createdAt]',
@@ -59,6 +63,20 @@ export class AddonsStudioDatabase extends Dexie {
         width: Number.isFinite(asset.width) ? asset.width : 0,
         height: Number.isFinite(asset.height) ? asset.height : 0,
       })))
+    })
+
+    this.version(DATABASE_SCHEMA_VERSION).stores({
+      projects:
+        '&id, name, namespace, folderId, projectType, targetVersion, createdAt, updatedAt, schemaVersion',
+      snapshots: '&id, projectId, createdAt, [projectId+createdAt]',
+      settings: '&key, updatedAt',
+      projectFolders: '&id, name, createdAt, updatedAt',
+      models: '&id, projectId, identifier, updatedAt, [projectId+updatedAt], [projectId+identifier]',
+      modelReferenceAssets: '&id, modelId, projectId, createdAt, [modelId+createdAt]',
+      modelEditorAssets: '&id, modelId, projectId, kind, createdAt, [modelId+kind], [modelId+createdAt]',
+      textureAssets: '&id, projectId, updatedAt, [projectId+updatedAt]',
+      materials: '&id, projectId, identifier, updatedAt, [projectId+updatedAt], [projectId+identifier]',
+      textureBindings: '&id, modelId, projectId, cubeId, materialId, updatedAt, [modelId+cubeId], [modelId+materialId]',
     })
   }
 }

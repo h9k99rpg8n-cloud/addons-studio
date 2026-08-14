@@ -10,6 +10,18 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
     version: APP_VERSION,
+    title: 'Texture Core is here',
+    subtitle: 'Texture Core Foundation',
+    highlights: [
+      'New Texture Core resource opens existing Model Core geometry without changing it',
+      'Materials library with local PNG/JPEG texture storage and live 3D nearest-neighbor preview',
+      'Pixel editor foundation with Pencil, Eraser, Fill, Eyedropper, pixel-size controls, zoom, Undo, Redo, and PNG saving',
+      'Per-face material/UV binding foundation with cube and face inspectors',
+      'Separate Materials and Texture Core entries now appear in the project workspace',
+    ],
+  },
+  {
+    version: '0.0.3.6.3',
     title: 'Model Core Stabilized',
     subtitle: 'Architecture & Stabilization Update',
     highlights: [
