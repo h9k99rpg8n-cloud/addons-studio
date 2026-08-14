@@ -10,6 +10,18 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
     version: APP_VERSION,
+    title: 'Model Core Stabilized',
+    subtitle: 'Architecture & Stabilization Update',
+    highlights: [
+      'Model Studio runtime split into focused camera, rendering, gizmo, touch, Inflate, and resource modules',
+      'Touch Gizmo Rotate graduated from experimental to an official touch modeling control',
+      'Background and modeling-guide rendering consolidated behind one reliable viewport layer',
+      'Original pixel-inspired Studio Preview Material 2.0 plus mobile performance and cleanup improvements',
+      'Regression hardening for Safari touch, transforms, persistence, import/export, groups, and editor assets',
+    ],
+  },
+  {
+    version: '0.0.3.6.2',
     title: 'Snapshot 3',
     subtitle: 'Final Model Core Content Update',
     highlights: [

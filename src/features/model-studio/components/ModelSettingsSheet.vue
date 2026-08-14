@@ -15,13 +15,14 @@ import type {
   StudioTransformSpace,
 } from '@/types/model'
 
-type SettingsPage = 'root' | 'controls' | 'resize' | 'precision' | 'camera' | 'appearance' | 'language' | 'experimental'
+type SettingsPage = 'root' | 'controls' | 'resize' | 'precision' | 'camera' | 'appearance' | 'language'
 
 const props = defineProps<{
   open: boolean
   settings: StudioModelingSettings
   snapping: StudioSnappingSettings
   camera: StudioCameraSettings
+  /** Kept for Snapshot 3 prop compatibility. No user-facing Touch Rotate experiment remains. */
   experimental: StudioExperimentalSettings
 }>()
 
@@ -40,9 +41,13 @@ const page = ref<SettingsPage>('root')
 watch(() => props.open, (open) => { if (!open) page.value = 'root' })
 
 const pageTitle = computed(() => ({
-  root: 'Model Studio Settings', controls: 'Gizmos & Controls', resize: 'Resize',
-  precision: 'Precision', camera: 'Camera', appearance: 'Appearance',
-  language: 'Language', experimental: 'Experimental',
+  root: 'Model Studio Settings',
+  controls: 'Gizmos & Controls',
+  resize: 'Resize',
+  precision: 'Precision',
+  camera: 'Camera',
+  appearance: 'Appearance',
+  language: 'Language',
 })[page.value])
 
 const categories: readonly { id: Exclude<SettingsPage, 'root'>; label: string; icon: string; detail: string }[] = [
@@ -52,7 +57,6 @@ const categories: readonly { id: Exclude<SettingsPage, 'root'>; label: string; i
   { id: 'camera', label: 'Camera', icon: 'camera', detail: 'Orbit, pan, zoom, and touch profile' },
   { id: 'appearance', label: 'Appearance', icon: 'palette', detail: 'Editor environment and modeling guides' },
   { id: 'language', label: 'Language', icon: 'languages', detail: 'English or Español' },
-  { id: 'experimental', label: 'Experimental', icon: 'sparkles', detail: 'Opt-in Model Core experiments' },
 ]
 
 const resizeOptions: readonly { value: StudioResizeDirection; label: string; help: string }[] = [
@@ -63,9 +67,15 @@ const resizeOptions: readonly { value: StudioResizeDirection; label: string; hel
 
 const controlOptions: readonly { value: StudioControlMode; label: string; help: string }[] = [
   { value: 'gizmos', label: 'Classic Gizmos', help: 'Use Addons Studio axis handles.' },
-  { value: 'touch-gizmo', label: 'Touch Gizmo', help: 'Hold and manipulate the selected object directly.' },
+  { value: 'touch-gizmo', label: 'Touch Gizmo', help: 'Move, resize, and rotate the selected object directly with touch.' },
   { value: 'hybrid', label: 'Hybrid', help: 'Use classic gizmos and safe direct touch together.' },
 ]
+
+const cameraProfiles = [
+  { id: 'standard', label: 'Standard' },
+  { id: 'one-finger', label: 'One-finger focused' },
+  { id: 'two-finger', label: 'Two-finger focused' },
+] as const
 
 const spaceOptions: readonly StudioTransformSpace[] = ['global', 'local', 'parent']
 const transformPresets: readonly (number | null)[] = [null, 1, 0.5, 0.25]
@@ -94,41 +104,127 @@ function resetCamera(): void {
 </script>
 
 <template>
-  <BottomSheet :open="open" :title="locale.t(pageTitle)" :description="page === 'root' ? locale.t('Focused Model Studio preferences') : undefined" @close="emit('close')">
+  <BottomSheet
+    :open="open"
+    :title="locale.t(pageTitle)"
+    :description="page === 'root' ? locale.t('Focused Model Studio preferences') : undefined"
+    @close="emit('close')"
+  >
     <div class="model-settings">
-      <button v-if="page !== 'root'" type="button" class="back-row" @click="page = 'root'"><AppIcon name="arrow-left" :size="20" />{{ locale.t('Model Studio Settings') }}</button>
+      <button v-if="page !== 'root'" type="button" class="back-row" @click="page = 'root'">
+        <AppIcon name="arrow-left" :size="20" />{{ locale.t('Model Studio Settings') }}
+      </button>
 
       <div v-if="page === 'root'" class="navigation-list">
-        <button v-for="category in categories" :key="category.id" type="button" @click="page = category.id"><span class="row-icon"><AppIcon :name="category.icon" :size="21" /></span><span><strong>{{ locale.t(category.label) }}</strong><small>{{ locale.t(category.detail) }}</small></span><AppIcon name="chevron-right" :size="20" /></button>
-        <button type="button" class="reset-row" @click="emit('requestReset')"><span class="row-icon"><AppIcon name="rotate-3d" :size="21" /></span><span><strong>{{ locale.t('Reset Model Studio Settings') }}</strong><small>{{ locale.t('Models, geometry, and editor images stay safe.') }}</small></span><AppIcon name="chevron-right" :size="20" /></button>
+        <button v-for="category in categories" :key="category.id" type="button" @click="page = category.id">
+          <span class="row-icon"><AppIcon :name="category.icon" :size="21" /></span>
+          <span><strong>{{ locale.t(category.label) }}</strong><small>{{ locale.t(category.detail) }}</small></span>
+          <AppIcon name="chevron-right" :size="20" />
+        </button>
+        <button type="button" class="reset-row" @click="emit('requestReset')">
+          <span class="row-icon"><AppIcon name="rotate-3d" :size="21" /></span>
+          <span><strong>{{ locale.t('Reset Model Studio Settings') }}</strong><small>{{ locale.t('Models, geometry, and editor images stay safe.') }}</small></span>
+          <AppIcon name="chevron-right" :size="20" />
+        </button>
       </div>
 
       <template v-else-if="page === 'controls'">
-        <fieldset><legend>{{ locale.t('Control Mode') }}</legend><button v-for="option in controlOptions" :key="option.value" type="button" class="option-row" :class="{ active: settings.controlMode === option.value }" @click="updateModeling('controlMode', option.value)"><span><strong>{{ locale.t(option.label) }}</strong><small>{{ locale.t(option.help) }}<template v-if="option.value === 'touch-gizmo'"> · {{ locale.t('Direct Rotate is experimental.') }}</template></small></span><AppIcon v-if="settings.controlMode === option.value" name="check" :size="19" /></button></fieldset>
-        <fieldset><legend>{{ locale.t('Transform Space') }}</legend><div class="segmented"><button v-for="space in spaceOptions" :key="space" type="button" :class="{ active: settings.transformSpace === space }" @click="updateModeling('transformSpace', space)">{{ locale.t(space[0]!.toUpperCase() + space.slice(1)) }}</button></div><p>{{ locale.t('Use the viewport quick selector to change this without reopening Settings.') }}</p></fieldset>
+        <fieldset>
+          <legend>{{ locale.t('Control Mode') }}</legend>
+          <button
+            v-for="option in controlOptions"
+            :key="option.value"
+            type="button"
+            class="option-row"
+            :class="{ active: settings.controlMode === option.value }"
+            @click="updateModeling('controlMode', option.value)"
+          >
+            <span><strong>{{ locale.t(option.label) }}</strong><small>{{ locale.t(option.help) }}</small></span>
+            <AppIcon v-if="settings.controlMode === option.value" name="check" :size="19" />
+          </button>
+        </fieldset>
+        <fieldset>
+          <legend>{{ locale.t('Transform Space') }}</legend>
+          <div class="segmented">
+            <button
+              v-for="space in spaceOptions"
+              :key="space"
+              type="button"
+              :class="{ active: settings.transformSpace === space }"
+              @click="updateModeling('transformSpace', space)"
+            >
+              {{ locale.t(space[0]!.toUpperCase() + space.slice(1)) }}
+            </button>
+          </div>
+          <p>{{ locale.t('Use the viewport quick selector to change this without reopening Settings.') }}</p>
+        </fieldset>
       </template>
 
-      <fieldset v-else-if="page === 'resize'"><legend>{{ locale.t('Resize Direction') }}</legend><button v-for="option in resizeOptions" :key="option.value" type="button" class="option-row" :class="{ active: settings.resizeDirection === option.value }" @click="updateModeling('resizeDirection', option.value)"><span><strong>{{ locale.t(option.label) }}</strong><small>{{ locale.t(option.help) }}</small></span><AppIcon v-if="settings.resizeDirection === option.value" name="check" :size="19" /></button></fieldset>
+      <fieldset v-else-if="page === 'resize'">
+        <legend>{{ locale.t('Resize Direction') }}</legend>
+        <button
+          v-for="option in resizeOptions"
+          :key="option.value"
+          type="button"
+          class="option-row"
+          :class="{ active: settings.resizeDirection === option.value }"
+          @click="updateModeling('resizeDirection', option.value)"
+        >
+          <span><strong>{{ locale.t(option.label) }}</strong><small>{{ locale.t(option.help) }}</small></span>
+          <AppIcon v-if="settings.resizeDirection === option.value" name="check" :size="19" />
+        </button>
+      </fieldset>
 
       <template v-else-if="page === 'precision'">
-        <fieldset><legend>{{ locale.t('Move snapping') }}</legend><div class="preset-grid"><button v-for="value in transformPresets" :key="String(value)" type="button" :class="{ active: snapping.transform === value }" @click="updateSnap('transform', value)">{{ value ?? locale.t('Off') }}</button><button type="button" :class="{ active: snapping.transform === snapping.customTransform }" @click="updateSnap('transform', snapping.customTransform)">{{ locale.t('Custom') }}</button></div><label>{{ locale.t('Custom') }}<input :value="snapping.customTransform" type="number" min="0.001" step="0.001" inputmode="decimal" @change="updateSnap('customTransform', Math.max(0.001, Number(($event.target as HTMLInputElement).value)))" /></label></fieldset>
-        <fieldset><legend>{{ locale.t('Resize snapping') }}</legend><div class="preset-grid"><button v-for="value in transformPresets" :key="String(value)" type="button" :class="{ active: (snapping.resize ?? snapping.transform) === value }" @click="updateSnap('resize', value)">{{ value ?? locale.t('Off') }}</button><button type="button" :class="{ active: (snapping.resize ?? snapping.transform) === snapping.customResize }" @click="updateSnap('resize', snapping.customResize ?? 0.125)">{{ locale.t('Custom') }}</button></div><label>{{ locale.t('Custom') }}<input :value="snapping.customResize ?? 0.125" type="number" min="0.001" step="0.001" inputmode="decimal" @change="updateSnap('customResize', Math.max(0.001, Number(($event.target as HTMLInputElement).value)))" /></label></fieldset>
-        <fieldset><legend>{{ locale.t('Rotate snapping') }}</legend><div class="preset-grid preset-grid--rotation"><button v-for="value in rotationPresets" :key="String(value)" type="button" :class="{ active: snapping.rotation === value }" @click="updateSnap('rotation', value)">{{ value === null ? locale.t('Off') : `${value}°` }}</button><button type="button" :class="{ active: snapping.rotation === snapping.customRotation }" @click="updateSnap('rotation', snapping.customRotation ?? 1)">{{ locale.t('Custom') }}</button></div><label>{{ locale.t('Custom degrees') }}<input :value="snapping.customRotation ?? 1" type="number" min="0.001" step="0.1" inputmode="decimal" @change="updateSnap('customRotation', Math.max(0.001, Number(($event.target as HTMLInputElement).value)))" /></label></fieldset>
+        <fieldset>
+          <legend>{{ locale.t('Move snapping') }}</legend>
+          <div class="preset-grid"><button v-for="value in transformPresets" :key="String(value)" type="button" :class="{ active: snapping.transform === value }" @click="updateSnap('transform', value)">{{ value ?? locale.t('Off') }}</button><button type="button" :class="{ active: snapping.transform === snapping.customTransform }" @click="updateSnap('transform', snapping.customTransform)">{{ locale.t('Custom') }}</button></div>
+          <label>{{ locale.t('Custom') }}<input :value="snapping.customTransform" type="number" min="0.001" step="0.001" inputmode="decimal" @change="updateSnap('customTransform', Math.max(0.001, Number(($event.target as HTMLInputElement).value)))" /></label>
+        </fieldset>
+        <fieldset>
+          <legend>{{ locale.t('Resize snapping') }}</legend>
+          <div class="preset-grid"><button v-for="value in transformPresets" :key="String(value)" type="button" :class="{ active: (snapping.resize ?? snapping.transform) === value }" @click="updateSnap('resize', value)">{{ value ?? locale.t('Off') }}</button><button type="button" :class="{ active: (snapping.resize ?? snapping.transform) === snapping.customResize }" @click="updateSnap('resize', snapping.customResize ?? 0.125)">{{ locale.t('Custom') }}</button></div>
+          <label>{{ locale.t('Custom') }}<input :value="snapping.customResize ?? 0.125" type="number" min="0.001" step="0.001" inputmode="decimal" @change="updateSnap('customResize', Math.max(0.001, Number(($event.target as HTMLInputElement).value)))" /></label>
+        </fieldset>
+        <fieldset>
+          <legend>{{ locale.t('Rotate snapping') }}</legend>
+          <div class="preset-grid preset-grid--rotation"><button v-for="value in rotationPresets" :key="String(value)" type="button" :class="{ active: snapping.rotation === value }" @click="updateSnap('rotation', value)">{{ value === null ? locale.t('Off') : `${value}°` }}</button><button type="button" :class="{ active: snapping.rotation === snapping.customRotation }" @click="updateSnap('rotation', snapping.customRotation ?? 1)">{{ locale.t('Custom') }}</button></div>
+          <label>{{ locale.t('Custom degrees') }}<input :value="snapping.customRotation ?? 1" type="number" min="0.001" step="0.1" inputmode="decimal" @change="updateSnap('customRotation', Math.max(0.001, Number(($event.target as HTMLInputElement).value)))" /></label>
+        </fieldset>
       </template>
 
       <template v-else-if="page === 'camera'">
-        <fieldset><legend>{{ locale.t('Touch navigation profile') }}</legend><div class="profile-list"><button v-for="profile in [{ id: 'standard', label: 'Standard' }, { id: 'one-finger', label: 'One-finger focused' }, { id: 'two-finger', label: 'Two-finger focused' }]" :key="profile.id" type="button" class="option-row" :class="{ active: camera.profile === profile.id }" @click="updateCamera('profile', profile.id)"><strong>{{ locale.t(profile.label) }}</strong><AppIcon v-if="camera.profile === profile.id" name="check" :size="19" /></button></div></fieldset>
+        <fieldset>
+          <legend>{{ locale.t('Touch navigation profile') }}</legend>
+          <div class="profile-list">
+            <button
+              v-for="profile in cameraProfiles"
+              :key="profile.id"
+              type="button"
+              class="option-row"
+              :class="{ active: camera.profile === profile.id }"
+              @click="updateCamera('profile', profile.id)"
+            >
+              <strong>{{ locale.t(profile.label) }}</strong>
+              <AppIcon v-if="camera.profile === profile.id" name="check" :size="19" />
+            </button>
+          </div>
+        </fieldset>
         <label class="slider-row"><span>{{ locale.t('Orbit sensitivity') }}<output>{{ camera.orbitSensitivity.toFixed(2) }}×</output></span><input :value="camera.orbitSensitivity" type="range" min="0.25" max="3" step="0.05" @input="updateCamera('orbitSensitivity', Number(($event.target as HTMLInputElement).value))" /></label>
         <label class="slider-row"><span>{{ locale.t('Pan sensitivity') }}<output>{{ camera.panSensitivity.toFixed(2) }}×</output></span><input :value="camera.panSensitivity" type="range" min="0.25" max="3" step="0.05" @input="updateCamera('panSensitivity', Number(($event.target as HTMLInputElement).value))" /></label>
         <label class="slider-row"><span>{{ locale.t('Zoom sensitivity') }}<output>{{ camera.zoomSensitivity.toFixed(2) }}×</output></span><input :value="camera.zoomSensitivity" type="range" min="0.25" max="3" step="0.05" @input="updateCamera('zoomSensitivity', Number(($event.target as HTMLInputElement).value))" /></label>
         <button type="button" class="secondary-action" @click="resetCamera">{{ locale.t('Restore camera defaults') }}</button>
       </template>
 
-      <div v-else-if="page === 'appearance'" class="navigation-list"><button type="button" @click="emit('openBackground')"><span class="row-icon"><AppIcon name="palette" :size="21" /></span><span><strong>{{ locale.t('Background / Guide') }}</strong><small>{{ locale.t('Environment, custom image, and viewport-aligned references') }}</small></span><AppIcon name="chevron-right" :size="20" /></button></div>
+      <div v-else-if="page === 'appearance'" class="navigation-list">
+        <button type="button" @click="emit('openBackground')"><span class="row-icon"><AppIcon name="palette" :size="21" /></span><span><strong>{{ locale.t('Background / Guide') }}</strong><small>{{ locale.t('Environment, custom image, and viewport-aligned references') }}</small></span><AppIcon name="chevron-right" :size="20" /></button>
+      </div>
 
-      <fieldset v-else-if="page === 'language'"><legend>{{ locale.t('Language') }}</legend><div class="language-grid"><button v-for="option in [{ value: 'en', label: 'English' }, { value: 'es', label: 'Español' }]" :key="option.value" type="button" :class="{ active: locale.language === option.value }" @click="selectLanguage(option.value as 'en' | 'es')"><strong>{{ option.label }}</strong><AppIcon v-if="locale.language === option.value" name="check" :size="19" /></button></div><p>{{ locale.t('Identifiers, namespaces, JSON keys, and file extensions never change.') }}</p></fieldset>
-
-      <fieldset v-else-if="page === 'experimental'"><legend>{{ locale.t('Experimental') }}</legend><label class="toggle-row"><span><strong>{{ locale.t('Touch Rotate') }}</strong><small>{{ locale.t('Experimental circular direct-touch rotation with snapping.') }}</small></span><input :checked="experimental.touchRotate" type="checkbox" @change="emit('updateExperimental', { ...experimental, touchRotate: ($event.target as HTMLInputElement).checked })" /></label></fieldset>
+      <fieldset v-else-if="page === 'language'">
+        <legend>{{ locale.t('Language') }}</legend>
+        <div class="language-grid"><button v-for="option in [{ value: 'en', label: 'English' }, { value: 'es', label: 'Español' }]" :key="option.value" type="button" :class="{ active: locale.language === option.value }" @click="selectLanguage(option.value as 'en' | 'es')"><strong>{{ option.label }}</strong><AppIcon v-if="locale.language === option.value" name="check" :size="19" /></button></div>
+        <p>{{ locale.t('Identifiers, namespaces, JSON keys, and file extensions never change.') }}</p>
+      </fieldset>
     </div>
   </BottomSheet>
 </template>
@@ -159,10 +255,6 @@ fieldset input[type='number'] { min-height: var(--touch-target); border: 1px sol
 .slider-row { display: grid; gap: 0.5rem; }
 .slider-row > span { display: flex; justify-content: space-between; gap: 1rem; color: var(--color-text-muted); font-size: 0.75rem; font-weight: 740; }
 .slider-row input { min-height: var(--touch-target); accent-color: var(--color-accent); }
-.toggle-row { min-height: 4rem; display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); padding: 0.65rem 0.75rem; background: var(--color-input-bg); }
-.toggle-row > span { display: grid; gap: 0.15rem; }
-.toggle-row small { color: var(--color-text-subtle); font-size: 0.68rem; }
-.toggle-row input { width: 1.45rem; height: 1.45rem; accent-color: var(--color-accent); }
 p { margin: 0.5rem 0 0; color: var(--color-text-subtle); font-size: 0.68rem; line-height: 1.45; }
 @media (max-width: 360px) { .preset-grid { grid-template-columns: repeat(3, 1fr); } }
 </style>
