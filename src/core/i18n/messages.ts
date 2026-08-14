@@ -545,6 +545,7 @@ export const SPANISH_MESSAGES: Readonly<Record<string, string>> = {
   'Project Workspace title': 'Espacio de trabajo del proyecto',
   'Alpha workspace': 'Espacio Alpha',
   '{count} total': '{count} en total',
+  '{count} resources': '{count} recursos',
   Edited: 'Editado',
   'Project actions for': 'Acciones del proyecto',
   project: 'proyecto',

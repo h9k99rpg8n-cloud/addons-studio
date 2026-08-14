@@ -28,7 +28,7 @@ const locale = useLocaleStore()
       <strong>{{ locale.t(category.label) }}</strong>
       <small>{{ locale.t(category.description) }}</small>
     </span>
-    <span class="resource-card__count" :aria-label="`${count ?? 0} resources`">{{ count ?? 0 }}</span>
+    <span class="resource-card__count" :aria-label="locale.t('{count} resources', { count: count ?? 0 })">{{ count ?? 0 }}</span>
   </button>
 </template>
 

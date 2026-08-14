@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import IconButton from '@/components/common/IconButton.vue'
+import { useLocaleStore } from '@/stores/locale'
 
 const props = withDefaults(
   defineProps<{
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const locale = useLocaleStore()
 const dialog = ref<HTMLDialogElement>()
 
 watch(
@@ -60,7 +62,7 @@ onBeforeUnmount(() => dialog.value?.close())
             <h2 :id="`${title.replace(/\s+/g, '-').toLowerCase()}-title`">{{ title }}</h2>
             <p v-if="description">{{ description }}</p>
           </div>
-          <IconButton icon="x" label="Close" @click="requestClose" />
+          <IconButton icon="x" :label="locale.t('Close')" @click="requestClose" />
         </header>
         <div class="bottom-sheet__content">
           <slot />
