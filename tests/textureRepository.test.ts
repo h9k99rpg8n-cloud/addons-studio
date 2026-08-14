@@ -54,28 +54,30 @@ describe('TextureRepository', () => {
     await database.delete()
   })
 
-  it('creates a material and persists an imported texture blob', async () => {
-    const material = await textures.createMaterial({ projectId, modelId, name: 'Blue Fabric' })
+  it('creates a project material and persists an imported texture blob', async () => {
+    const material = await textures.createMaterial({ projectId, name: 'Blue Fabric' })
     const imported = await textures.importTexture(
       material.id,
       new File(['pixel-data'], 'blue_fabric.png', { type: 'image/png' }),
     )
 
     expect(imported.material).toMatchObject({
+      projectId,
       name: 'Blue Fabric',
       identifier: 'blue_fabric',
       textureAssetId: imported.asset.id,
     })
     expect(imported.asset).toMatchObject({
-      modelId,
       projectId,
       width: 32,
       height: 32,
       mimeType: 'image/png',
     })
+    expect(imported.asset).not.toHaveProperty('modelId')
 
+    const databaseName = database.name
     database.close()
-    database = new AddonsStudioDatabase(database.name)
+    database = new AddonsStudioDatabase(databaseName)
     textures = new TextureRepository(database, inspectTestTexture)
     const reopened = await textures.getWorkspace(modelId)
     expect(reopened.materials).toHaveLength(1)
@@ -83,9 +85,49 @@ describe('TextureRepository', () => {
     expect(reopened.assets[0]?.blob).toBeDefined()
   })
 
+  it('reuses one project material across multiple models while keeping bindings model-specific', async () => {
+    const material = await textures.createMaterial({ projectId, name: 'Shared Wood' })
+    await textures.saveFaceBinding({
+      projectId,
+      modelId,
+      cubeId,
+      face: 'north',
+      materialId: material.id,
+      textureWidth: 32,
+      textureHeight: 32,
+    })
+
+    const second = await models.createModel({
+      projectId,
+      name: 'Second Model',
+      identifier: 'geometry.texture_project.second',
+    })
+    const secondCube = createStudioCube(2)
+    second.elements.push(secondCube)
+    await models.saveModel(second)
+    await textures.saveFaceBinding({
+      projectId,
+      modelId: second.id,
+      cubeId: secondCube.id,
+      face: 'up',
+      materialId: material.id,
+      textureWidth: 32,
+      textureHeight: 32,
+    })
+
+    const firstWorkspace = await textures.getWorkspace(modelId)
+    const secondWorkspace = await textures.getWorkspace(second.id)
+    expect(firstWorkspace.materials.map((entry) => entry.id)).toContain(material.id)
+    expect(secondWorkspace.materials.map((entry) => entry.id)).toContain(material.id)
+    expect(firstWorkspace.bindings).toHaveLength(1)
+    expect(secondWorkspace.bindings).toHaveLength(1)
+    expect(firstWorkspace.bindings[0]?.modelId).toBe(modelId)
+    expect(secondWorkspace.bindings[0]?.modelId).toBe(second.id)
+  })
+
   it('creates stable per-face bindings without changing model geometry', async () => {
     const before = await models.getModel(modelId)
-    const material = await textures.createMaterial({ projectId, modelId, name: 'Metal' })
+    const material = await textures.createMaterial({ projectId, name: 'Metal' })
     const binding = await textures.saveFaceBinding({
       projectId,
       modelId,
@@ -109,7 +151,7 @@ describe('TextureRepository', () => {
   })
 
   it('replaces edited texture pixels with PNG data and preserves the material link', async () => {
-    const material = await textures.createMaterial({ projectId, modelId, name: 'Editable' })
+    const material = await textures.createMaterial({ projectId, name: 'Editable' })
     const imported = await textures.importTexture(
       material.id,
       new File(['original'], 'editable.jpg', { type: 'image/jpeg' }),
@@ -127,8 +169,8 @@ describe('TextureRepository', () => {
     expect(workspace.assets[0]?.mimeType).toBe('image/png')
   })
 
-  it('deletes material-owned texture data and its face bindings together', async () => {
-    const material = await textures.createMaterial({ projectId, modelId, name: 'Temporary' })
+  it('deletes material-owned texture data and every binding that used it', async () => {
+    const material = await textures.createMaterial({ projectId, name: 'Temporary' })
     const imported = await textures.importTexture(
       material.id,
       new File(['texture'], 'temporary.png', { type: 'image/png' }),
