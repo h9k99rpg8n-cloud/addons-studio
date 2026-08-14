@@ -6,6 +6,7 @@ import AppDialog from '@/components/common/AppDialog.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import { toAppError } from '@/core/errors/AppError'
+import { useLocaleStore } from '@/stores/locale'
 import { useProjectStore } from '@/stores/projects'
 import { useToastStore } from '@/stores/toasts'
 import type { StudioProjectFolder } from '@/types/project'
@@ -23,6 +24,7 @@ const emit = defineEmits<{
 
 const projects = useProjectStore()
 const toasts = useToastStore()
+const locale = useLocaleStore()
 const renameOpen = ref(false)
 const deleteOpen = ref(false)
 const renameValue = ref('')
@@ -56,7 +58,7 @@ async function rename(): Promise<void> {
   try {
     await projects.renameFolder(props.folder.id, renameValue.value)
     renameOpen.value = false
-    toasts.push({ type: 'success', message: 'Folder renamed' })
+    toasts.push({ type: 'success', message: locale.t('Folder renamed') })
   } catch (error) {
     errorMessage.value = toAppError(error, 'Addons Studio could not rename this folder.').userMessage
   } finally {
@@ -75,8 +77,10 @@ async function remove(): Promise<void> {
       type: 'success',
       message:
         movedCount > 0
-          ? `Folder deleted. ${movedCount} ${movedCount === 1 ? 'project was' : 'projects were'} moved to My Projects.`
-          : 'Folder deleted',
+          ? locale.t(movedCount === 1
+            ? 'Folder deleted. {count} project was moved to My Projects.'
+            : 'Folder deleted. {count} projects were moved to My Projects.', { count: movedCount })
+          : locale.t('Folder deleted'),
     })
     emit('deleted', id)
   } catch (error) {
@@ -93,28 +97,28 @@ async function remove(): Promise<void> {
 <template>
   <BottomSheet
     :open="open && Boolean(folder)"
-    :title="folder?.name ?? 'Folder actions'"
-    description="Organize this local folder"
+    :title="folder?.name ?? locale.t('Folder actions')"
+    :description="locale.t('Organize this local folder')"
     @close="$emit('close')"
   >
     <div class="folder-actions">
       <button type="button" @click="chooseRename">
         <span><AppIcon name="pencil" :size="21" /></span>
-        <span><strong>Rename</strong><small>Change the folder name</small></span>
+        <span><strong>{{ locale.t('Rename') }}</strong><small>{{ locale.t('Change the folder name') }}</small></span>
       </button>
       <button type="button" class="folder-actions__danger" @click="chooseDelete">
         <span><AppIcon name="trash" :size="21" /></span>
-        <span><strong>Delete folder</strong><small>Projects will be kept safely</small></span>
+        <span><strong>{{ locale.t('Delete folder') }}</strong><small>{{ locale.t('Projects will be kept safely') }}</small></span>
       </button>
     </div>
   </BottomSheet>
 
   <AppDialog
     :open="renameOpen"
-    :title="`Rename “${folder?.name ?? 'folder'}”`"
+    :title="`${locale.t('Rename')} “${folder?.name ?? locale.t('folder')}”`"
     @close="renameOpen = false"
   >
-    <label class="field-label" for="rename-folder">Folder Name</label>
+    <label class="field-label" for="rename-folder">{{ locale.t('Folder Name') }}</label>
     <input
       id="rename-folder"
       v-model="renameValue"
@@ -125,28 +129,28 @@ async function remove(): Promise<void> {
     />
     <p v-if="errorMessage" class="field-error" role="alert">{{ errorMessage }}</p>
     <template #actions>
-      <AppButton variant="ghost" @click="renameOpen = false">Cancel</AppButton>
-      <AppButton :loading="busy" @click="rename">Rename</AppButton>
+      <AppButton variant="ghost" @click="renameOpen = false">{{ locale.t('Cancel') }}</AppButton>
+      <AppButton :loading="busy" @click="rename">{{ locale.t('Rename') }}</AppButton>
     </template>
   </AppDialog>
 
   <AppDialog
     :open="deleteOpen"
-    :title="`Delete “${folder?.name ?? 'folder'}”?`"
+    :title="`${locale.t('Delete')} “${folder?.name ?? locale.t('folder')}”?`"
     :description="
       projectCount > 0
-        ? `${projectCount} ${projectCount === 1 ? 'project' : 'projects'} will be moved to the root My Projects list. Nothing inside will be deleted.`
-        : 'The empty folder will be removed. No projects will be deleted.'
+        ? locale.t(projectCount === 1 ? '{count} project will be moved to the root My Projects list. Nothing inside will be deleted.' : '{count} projects will be moved to the root My Projects list. Nothing inside will be deleted.', { count: projectCount })
+        : locale.t('The empty folder will be removed. No projects will be deleted.')
     "
     @close="deleteOpen = false"
   >
     <div class="safe-delete-note">
       <AppIcon name="folder-output" :size="22" />
-      <span>Delete only the folder; keep every project.</span>
+      <span>{{ locale.t('Delete only the folder; keep every project.') }}</span>
     </div>
     <template #actions>
-      <AppButton variant="ghost" @click="deleteOpen = false">Cancel</AppButton>
-      <AppButton variant="danger" :loading="busy" @click="remove">Delete Folder</AppButton>
+      <AppButton variant="ghost" @click="deleteOpen = false">{{ locale.t('Cancel') }}</AppButton>
+      <AppButton variant="danger" :loading="busy" @click="remove">{{ locale.t('Delete Folder') }}</AppButton>
     </template>
   </AppDialog>
 </template>

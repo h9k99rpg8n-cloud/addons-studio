@@ -28,11 +28,11 @@ describe('mobile Model Studio viewport architecture', () => {
     expect(viewportSource).not.toContain('TransformControls')
   })
 
-  it('implements Tactilismos without stealing empty-space camera gestures', () => {
+  it('implements Touch Gizmo without stealing empty-space camera gestures', () => {
     expect(viewportSource).toContain("mode: 'move' | 'scale' | 'rotate'")
     expect(viewportSource).toContain('startDirectTouch')
     expect(viewportSource).toContain('buildUniformResizeState')
-    expect(viewportSource).toContain('Hold object: Tactilismo')
+    expect(viewportSource).toContain('Hold object: Touch Gizmo')
     expect(viewportSource).toContain('emptyPointer =')
     expect(studioSource).toContain('controlMode')
   })
@@ -49,7 +49,7 @@ describe('mobile Model Studio viewport architecture', () => {
     expect(viewportSource).not.toContain('PlaneGeometry')
     expect(referencesSource).toContain('pointer-events: none')
     expect(referencesSource).toContain('reference.view === props.view')
-    expect(viewportSource).not.toContain('SphereGeometry')
+    expect(viewportSource).toContain('inflateHandlesForCube')
     expect(viewportSource).toContain('GridHelper')
     expect(viewportSource).toContain('AxesHelper')
   })

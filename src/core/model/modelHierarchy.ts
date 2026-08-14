@@ -1,5 +1,5 @@
 import type {
-  ModelTransformTool,
+  ModelManipulationTool,
   StudioCube,
   StudioGroup,
   StudioModel,
@@ -262,7 +262,7 @@ function buildCubeTransform(
   } else if (operation === 'rotate') {
     const axis = options.axis
     const delta = options.delta
-    let center: StudioVector3
+    const modelingCenter = elementCenter(before)
     if (axis && Number.isFinite(delta)) {
       const basis = axisVectorForSpace(
         before,
@@ -270,19 +270,16 @@ function buildCubeTransform(
         options.transformSpace ?? 'global',
         axis,
       )
-      center = rotatePointAroundAxis(elementCenter(before), before.pivot, basis, delta!)
-      after.defaultPivot = rotatePointAroundAxis(before.defaultPivot, before.pivot, basis, delta!)
+      after.pivot = rotatePointAroundAxis(before.pivot, modelingCenter, basis, delta!)
+      after.defaultPivot = rotatePointAroundAxis(before.defaultPivot, modelingCenter, basis, delta!)
     } else {
       const rotationDelta = subtractVector(after.rotation, before.rotation)
-      center = rotatePointEuler(elementCenter(before), before.pivot, rotationDelta)
-      after.defaultPivot = rotatePointEuler(before.defaultPivot, before.pivot, rotationDelta)
+      after.pivot = rotatePointEuler(before.pivot, modelingCenter, rotationDelta)
+      after.defaultPivot = rotatePointEuler(before.defaultPivot, modelingCenter, rotationDelta)
     }
-    after.position = {
-      x: center.x - after.size.x / 2,
-      y: center.y - after.size.y / 2,
-      z: center.z - after.size.z / 2,
-    }
-    after.pivot = { ...before.pivot }
+    // Normal modeling rotation uses the geometry center. The explicit pivot is
+    // retained relative to the cube and is only the gizmo origin in Pivot mode.
+    after.position = { ...before.position }
   }
   return { elements: [after], groups: [] }
 }
@@ -406,10 +403,11 @@ function buildGroupTransform(
     const basis = axis
       ? axisVectorForSpace(before, session.parentRotation, options.transformSpace ?? 'global', axis)
       : undefined
+    const modelingCenter = groupBoundsCenter(session.before.elements)
     const rotatePoint = (point: StudioVector3) =>
       basis && Number.isFinite(delta)
-        ? rotatePointAroundAxis(point, before.pivot, basis, delta!)
-        : rotatePointEuler(point, before.pivot, rotationDelta)
+        ? rotatePointAroundAxis(point, modelingCenter, basis, delta!)
+        : rotatePointEuler(point, modelingCenter, rotationDelta)
     return {
       elements: session.before.elements.map((source) => {
         const cube = cloneStudioCube(source)
@@ -428,7 +426,8 @@ function buildGroupTransform(
       }),
       groups: [{
         ...after,
-        pivot: { ...before.pivot },
+        position: rotatePoint(before.position),
+        pivot: rotatePoint(before.pivot),
         defaultPivot: rotatePoint(before.defaultPivot),
       }],
     }
@@ -478,7 +477,7 @@ export function snapValue(value: number, step: number | null): number {
 
 export function sanitizeGestureDelta(
   delta: number,
-  tool: Exclude<ModelTransformTool, 'select'>,
+  tool: ModelManipulationTool,
   initialExtent: number,
   cameraDistance: number,
 ): number {
@@ -514,7 +513,7 @@ export function isPointerStepContinuous(
 
 export function requestedAxisTransform(
   session: StudioNodeTransformSession,
-  tool: Exclude<ModelTransformTool, 'select'>,
+  tool: ModelManipulationTool,
   axis: StudioAxis,
   delta: number,
   transformSnap: number | null,
@@ -562,7 +561,7 @@ export function requestedAxisTransform(
 
 export function buildAxisTransformState(
   session: StudioNodeTransformSession,
-  tool: Exclude<ModelTransformTool, 'select'>,
+  tool: ModelManipulationTool,
   axis: StudioAxis,
   delta: number,
   transformSnap: number | null,

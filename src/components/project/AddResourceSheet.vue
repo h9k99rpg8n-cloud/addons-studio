@@ -5,6 +5,7 @@ import AppBadge from '@/components/common/AppBadge.vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import StudioIcon from '@/components/common/StudioIcon.vue'
 import { resourceTemplateRegistry } from '@/core/project/resourceTemplateRegistry'
+import { useLocaleStore } from '@/stores/locale'
 import type { ResourceTemplate, ResourceTemplateGroup } from '@/types/project'
 
 const props = defineProps<{
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   close: []
   select: [template: ResourceTemplate]
 }>()
+const locale = useLocaleStore()
 
 const groups: readonly { id: ResourceTemplateGroup; label: string; description: string }[] = [
   { id: 'gameplay', label: 'Gameplay', description: 'Objects that affect the game' },
@@ -33,15 +35,15 @@ function templatesFor(group: ResourceTemplateGroup): ResourceTemplate[] {
 <template>
   <BottomSheet
     :open="open"
-    title="Add Resource"
-    description="Choose the kind of object you want to create"
+    :title="locale.t('Add Resource')"
+    :description="locale.t('Choose the kind of object you want to create')"
     @close="$emit('close')"
   >
     <div class="resource-picker">
       <section v-for="group in groups" :key="group.id">
         <header>
-          <h3>{{ group.label }}</h3>
-          <p>{{ group.description }}</p>
+          <h3>{{ locale.t(group.label) }}</h3>
+          <p>{{ locale.t(group.description) }}</p>
         </header>
         <div class="resource-picker__grid">
           <button
@@ -54,11 +56,11 @@ function templatesFor(group: ResourceTemplateGroup): ResourceTemplate[] {
               <StudioIcon :name="template.icon" :size="27" />
             </span>
             <span class="resource-picker__copy">
-              <strong>{{ template.name }}</strong>
-              <small>{{ template.description }}</small>
+              <strong>{{ locale.t(template.name) }}</strong>
+              <small>{{ locale.t(template.description) }}</small>
             </span>
             <AppBadge :tone="template.status === 'available' ? 'accent' : 'neutral'">
-              {{ template.status === 'available' ? 'Available' : 'Coming soon' }}
+              {{ locale.t(template.status === 'available' ? 'Available' : 'Coming soon') }}
             </AppBadge>
           </button>
         </div>

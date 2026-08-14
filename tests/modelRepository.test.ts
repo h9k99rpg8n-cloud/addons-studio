@@ -116,7 +116,7 @@ describe('ModelRepository', () => {
       snapping: { transform: 0.25, customTransform: 0.125, rotation: 22.5 },
       modeling: {
         resizeDirection: 'negative',
-        controlMode: 'tactilismos',
+        controlMode: 'touch-gizmo',
         transformSpace: 'parent',
         language: 'es',
       },

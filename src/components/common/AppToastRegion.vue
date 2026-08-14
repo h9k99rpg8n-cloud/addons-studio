@@ -4,9 +4,11 @@ import { storeToRefs } from 'pinia'
 import AppIcon from '@/components/common/AppIcon.vue'
 import IconButton from '@/components/common/IconButton.vue'
 import { useToastStore } from '@/stores/toasts'
+import { useLocaleStore } from '@/stores/locale'
 import type { ToastType } from '@/types/app'
 
 const toasts = useToastStore()
+const locale = useLocaleStore()
 const { messages } = storeToRefs(toasts)
 
 const iconByType: Record<ToastType, string> = {
@@ -29,7 +31,7 @@ const iconByType: Record<ToastType, string> = {
       >
         <AppIcon :name="iconByType[message.type]" :size="20" />
         <p>{{ message.message }}</p>
-        <IconButton icon="x" label="Dismiss notification" @click="toasts.remove(message.id)" />
+        <IconButton icon="x" :label="locale.t('Dismiss notification')" @click="toasts.remove(message.id)" />
       </div>
     </TransitionGroup>
   </div>

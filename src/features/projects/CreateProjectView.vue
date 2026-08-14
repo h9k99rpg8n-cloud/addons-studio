@@ -18,12 +18,14 @@ import {
   type ValidationIssue,
 } from '@/core/project/projectValidation'
 import { completeWelcome } from '@/core/storage/preferences'
+import { useLocaleStore } from '@/stores/locale'
 import { useProjectStore } from '@/stores/projects'
 import { useToastStore } from '@/stores/toasts'
 import type { CreateProjectInput, ProjectIcon as ProjectIconType, ProjectType } from '@/types/project'
 import { createImportedProjectIcon } from '@/utils/projectIcon'
 
 const router = useRouter()
+const locale = useLocaleStore()
 const projects = useProjectStore()
 const toasts = useToastStore()
 const form = reactive<CreateProjectInput>({
@@ -91,7 +93,7 @@ async function importIcon(event: Event): Promise<void> {
   try {
     form.icon = await createImportedProjectIcon(file)
   } catch (error) {
-    iconError.value = error instanceof Error ? error.message : 'The selected image could not be used.'
+    iconError.value = error instanceof Error ? error.message : locale.t('The selected image could not be used.')
   } finally {
     importingIcon.value = false
     input.value = ''
@@ -117,7 +119,7 @@ async function submit(): Promise<void> {
   try {
     const project = await projects.createProject(form)
     completeWelcome()
-    toasts.push({ type: 'success', message: 'Project created' })
+    toasts.push({ type: 'success', message: locale.t('Project created') })
     await router.replace({ name: 'workspace', params: { id: project.id } })
   } catch (error) {
     toasts.push({
@@ -133,10 +135,10 @@ async function submit(): Promise<void> {
 <template>
   <main class="create-project-view">
     <header class="editor-topbar">
-      <IconButton icon="arrow-left" label="Go back" @click="router.back()" />
+      <IconButton icon="arrow-left" :label="locale.t('Go back')" @click="router.back()" />
       <div>
-        <p class="eyebrow">New local workspace</p>
-        <h1>Create Project</h1>
+        <p class="eyebrow">{{ locale.t('New local workspace') }}</p>
+        <h1>{{ locale.t('Create Project') }}</h1>
       </div>
       <span aria-hidden="true" />
     </header>
@@ -145,11 +147,11 @@ async function submit(): Promise<void> {
       <section class="form-section" aria-labelledby="identity-heading">
         <header class="form-section__heading">
           <span>01</span>
-          <div><h2 id="identity-heading">Identity</h2><p>Name the project and its Bedrock namespace.</p></div>
+          <div><h2 id="identity-heading">{{ locale.t('Identity') }}</h2><p>{{ locale.t('Name the project and its Bedrock namespace.') }}</p></div>
         </header>
 
         <label class="field-group">
-          <span class="field-label">Project Name <em>Required</em></span>
+          <span class="field-label">{{ locale.t('Project Name') }} <em>{{ locale.t('Required') }}</em></span>
           <input
             v-model="form.name"
             data-field="name"
@@ -163,12 +165,12 @@ async function submit(): Promise<void> {
             :aria-describedby="fieldError('name') ? 'project-name-error' : undefined"
           />
           <span v-if="fieldError('name')" id="project-name-error" class="field-error" role="alert">
-            {{ fieldError('name') }}
+            {{ locale.t(fieldError('name') ?? '') }}
           </span>
         </label>
 
         <label class="field-group">
-          <span class="field-label">Namespace <em>Required</em></span>
+          <span class="field-label">{{ locale.t('Namespace') }} <em>{{ locale.t('Required') }}</em></span>
           <span class="namespace-input">
             <span aria-hidden="true">as:</span>
             <input
@@ -184,20 +186,20 @@ async function submit(): Promise<void> {
               @input="updateNamespace(($event.target as HTMLInputElement).value)"
             />
           </span>
-          <span id="namespace-help" class="field-help">Lowercase letters, numbers, and underscores.</span>
+          <span id="namespace-help" class="field-help">{{ locale.t('Lowercase letters, numbers, and underscores.') }}</span>
           <span v-if="fieldError('namespace')" id="namespace-error" class="field-error" role="alert">
-            {{ fieldError('namespace') }}
+            {{ locale.t(fieldError('namespace') ?? '') }}
           </span>
         </label>
 
         <label class="field-group">
-          <span class="field-label">Description <small>{{ descriptionLength }}/240</small></span>
+          <span class="field-label">{{ locale.t('Description') }} <small>{{ descriptionLength }}/240</small></span>
           <textarea
             v-model="form.description"
             class="text-input text-area"
             maxlength="240"
             rows="3"
-            placeholder="Optional project notes"
+            :placeholder="locale.t('Optional project notes')"
           />
         </label>
       </section>
@@ -205,17 +207,17 @@ async function submit(): Promise<void> {
       <section class="form-section" aria-labelledby="icon-heading">
         <header class="form-section__heading">
           <span>02</span>
-          <div><h2 id="icon-heading">Project Icon</h2><p>Choose a lightweight built-in mark or a device image.</p></div>
+          <div><h2 id="icon-heading">{{ locale.t('Project Icon') }}</h2><p>{{ locale.t('Choose a lightweight built-in mark or a device image.') }}</p></div>
         </header>
 
         <div class="icon-picker">
           <ProjectIcon :icon="(form.icon as ProjectIconType)" size="large" />
           <div class="icon-picker__details">
-            <strong>Workspace preview</strong>
-            <small>Imported images are cropped and resized locally.</small>
+            <strong>{{ locale.t('Workspace preview') }}</strong>
+            <small>{{ locale.t('Imported images are cropped and resized locally.') }}</small>
             <AppButton variant="secondary" :loading="importingIcon" @click="fileInput?.click()">
               <template #icon><AppIcon name="upload" :size="18" /></template>
-              Choose PNG/JPG
+              {{ locale.t('Choose PNG/JPG') }}
             </AppButton>
             <input
               ref="fileInput"
@@ -229,7 +231,7 @@ async function submit(): Promise<void> {
         <p v-if="iconError" class="field-error" role="alert">{{ iconError }}</p>
 
         <fieldset class="built-in-icons">
-          <legend class="field-label">Built-in icons</legend>
+          <legend class="field-label">{{ locale.t('Built-in icons') }}</legend>
           <div>
             <button
               v-for="icon in builtInIcons"
@@ -237,7 +239,7 @@ async function submit(): Promise<void> {
               type="button"
               :class="{ 'is-selected': form.icon?.kind === 'builtin' && form.icon.value === icon.id }"
               :aria-pressed="form.icon?.kind === 'builtin' && form.icon.value === icon.id"
-              :aria-label="icon.label"
+              :aria-label="locale.t(icon.label)"
               @click="chooseBuiltInIcon(icon.id)"
             >
               <StudioIcon :name="icon.id" :size="24" />
@@ -249,22 +251,22 @@ async function submit(): Promise<void> {
       <section class="form-section" aria-labelledby="configuration-heading">
         <header class="form-section__heading">
           <span>03</span>
-          <div><h2 id="configuration-heading">Configuration</h2><p>Set the pack foundation and version target.</p></div>
+          <div><h2 id="configuration-heading">{{ locale.t('Configuration') }}</h2><p>{{ locale.t('Set the pack foundation and version target.') }}</p></div>
         </header>
 
         <fieldset class="option-cards">
-          <legend class="field-label">Project Type</legend>
+          <legend class="field-label">{{ locale.t('Project Type') }}</legend>
           <label v-for="option in projectTypes" :key="option.value">
             <input v-model="form.projectType" type="radio" :value="option.value" />
             <span>
-              <span><strong>{{ option.label }}</strong><AppIcon name="check" :size="18" /></span>
-              <small>{{ option.description }}</small>
+              <span><strong>{{ locale.t(option.label) }}</strong><AppIcon name="check" :size="18" /></span>
+              <small>{{ locale.t(option.description) }}</small>
             </span>
           </label>
         </fieldset>
 
         <label class="field-group">
-          <span class="field-label">Target Minecraft Version</span>
+          <span class="field-label">{{ locale.t('Target Minecraft Version') }}</span>
           <span class="select-wrap">
             <select
               v-model="form.targetVersion"
@@ -273,14 +275,14 @@ async function submit(): Promise<void> {
               @change="clearIssue('targetVersion')"
             >
               <option v-for="version in BEDROCK_VERSIONS" :key="version.value" :value="version.value">
-                {{ version.label }}{{ version.status === 'current' ? ' — Current' : '' }}
+                {{ version.label }}{{ version.status === 'current' ? ` — ${locale.t('Current')}` : '' }}
               </option>
             </select>
             <AppIcon name="chevron-right" :size="18" />
           </span>
-          <span class="field-help">The maintained list can grow without changing the wizard.</span>
+          <span class="field-help">{{ locale.t('The maintained list can grow without changing the wizard.') }}</span>
           <span v-if="fieldError('targetVersion')" class="field-error" role="alert">
-            {{ fieldError('targetVersion') }}
+            {{ locale.t(fieldError('targetVersion') ?? '') }}
           </span>
         </label>
       </section>
@@ -288,18 +290,18 @@ async function submit(): Promise<void> {
       <section class="form-section" aria-labelledby="experiments-heading">
         <header class="form-section__heading">
           <span>04</span>
-          <div><h2 id="experiments-heading">Experiments</h2><p>Reserve experimental behavior for future Bedrock tools.</p></div>
+          <div><h2 id="experiments-heading">{{ locale.t('Experiments') }}</h2><p>{{ locale.t('Reserve experimental behavior for future Bedrock tools.') }}</p></div>
         </header>
 
         <label class="experiment-option">
           <span>
-            <strong>Enable experimental project features</strong>
-            <small>No unsupported Minecraft flags are applied in Alpha 0.0.3.6.1.</small>
+            <strong>{{ locale.t('Enable experimental project features') }}</strong>
+            <small>{{ locale.t('No unsupported Minecraft flags are applied in Alpha 0.0.3.6.2.') }}</small>
           </span>
           <input v-model="form.experimentalFeatures" type="checkbox" role="switch" />
         </label>
         <p class="field-help experiment-help">
-          Leave this off for “No experiments.” Actual experiment definitions will be registered in a future release.
+          {{ locale.t('Leave this off for “No experiments.” Actual experiment definitions will be registered in a future release.') }}
         </p>
       </section>
     </form>
@@ -313,7 +315,7 @@ async function submit(): Promise<void> {
         :loading="creating"
       >
         <template #icon><AppIcon name="plus" :size="21" /></template>
-        Create Project
+        {{ locale.t('Create Project') }}
       </AppButton>
     </footer>
   </main>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppIcon from '@/components/common/AppIcon.vue'
 import IconButton from '@/components/common/IconButton.vue'
+import { useLocaleStore } from '@/stores/locale'
 import type { StudioProjectFolder } from '@/types/project'
 
 defineProps<{
@@ -12,6 +13,8 @@ defineEmits<{
   open: []
   menu: []
 }>()
+
+const locale = useLocaleStore()
 </script>
 
 <template>
@@ -20,14 +23,14 @@ defineEmits<{
       <span class="folder-card__icon"><AppIcon name="folder-open" :size="29" /></span>
       <span class="folder-card__content">
         <strong>{{ folder.name }}</strong>
-        <small>{{ projectCount }} {{ projectCount === 1 ? 'project' : 'projects' }}</small>
+        <small>{{ projectCount }} {{ locale.t(projectCount === 1 ? 'project' : 'projects') }}</small>
       </span>
       <AppIcon name="chevron-right" :size="19" class="folder-card__chevron" />
     </button>
     <IconButton
       class="folder-card__menu"
       icon="more-vertical"
-      :label="`Folder actions for ${folder.name}`"
+      :label="`${locale.t('Folder actions for')} ${folder.name}`"
       @click="$emit('menu')"
     />
   </article>

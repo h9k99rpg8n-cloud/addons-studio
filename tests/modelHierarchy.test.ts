@@ -167,7 +167,7 @@ describe('Model Studio hierarchy and transforms', () => {
     expect(after.size.x).toBe(20)
   })
 
-  it('edits a pivot without moving geometry and rotates a cube around that pivot later', () => {
+  it('edits a pivot without moving geometry while normal modeling rotation uses the geometry center', () => {
     const { model, cube } = groupedModel()
     const pivotSession = captureNodeTransform(model, cube.id)!
     const pivotState = buildPivotState(pivotSession, { x: 0, y: 0, z: 0 })
@@ -177,10 +177,9 @@ describe('Model Studio hierarchy and transforms', () => {
     applyHierarchyState(model, pivotState)
     const rotateSession = captureNodeTransform(model, cube.id)!
     const rotated = buildAxisTransformState(rotateSession, 'rotate', 'z', 90, 1, 15).elements[0]!
-    expect(rotated.position.x).toBeCloseTo(-2)
-    expect(rotated.position.y).toBeCloseTo(2)
+    expect(rotated.position).toEqual(cube.position)
     expect(rotated.rotation.z).toBe(90)
-    expect(rotated.pivot).toEqual({ x: 0, y: 0, z: 0 })
+    expect(rotated.pivot).toEqual({ x: 4, y: -2, z: 0 })
   })
 
   it('rejects non-finite and runaway resize gesture spikes while preserving ordinary drags', () => {

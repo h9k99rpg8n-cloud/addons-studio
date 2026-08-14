@@ -2,6 +2,7 @@ import { AppError } from '@/core/errors/AppError'
 import {
   cloneStudioCube,
   cloneStudioGroup,
+  cloneStudioModelFolder,
   cloneStudioModel,
   cloneStudioReference,
   MODEL_SCHEMA_VERSION,
@@ -162,6 +163,7 @@ export class ProjectRepository {
         const normalized = cloneStudioModel(model)
         const elementIds = new Map(normalized.elements.map((element) => [element.id, createId()]))
         const groupIds = new Map(normalized.groups.map((group) => [group.id, createId()]))
+        const folderIds = new Map(normalized.folders.map((folder) => [folder.id, createId()]))
         return {
           ...normalized,
           id: modelIds.get(model.id)!,
@@ -170,11 +172,18 @@ export class ProjectRepository {
             ...cloneStudioCube(element),
             id: elementIds.get(element.id)!,
             parentId: element.parentId ? groupIds.get(element.parentId) : undefined,
+            folderId: element.folderId ? folderIds.get(element.folderId) : undefined,
           })),
           groups: normalized.groups.map((group) => ({
             ...cloneStudioGroup(group),
             id: groupIds.get(group.id)!,
             parentId: group.parentId ? groupIds.get(group.parentId) : undefined,
+            folderId: group.folderId ? folderIds.get(group.folderId) : undefined,
+          })),
+          folders: normalized.folders.map((folder) => ({
+            ...cloneStudioModelFolder(folder),
+            id: folderIds.get(folder.id)!,
+            parentId: folder.parentId ? folderIds.get(folder.parentId) : undefined,
           })),
           references: normalized.references
             .filter((reference) => assetIds.has(reference.assetId))

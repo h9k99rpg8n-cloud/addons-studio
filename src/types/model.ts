@@ -29,6 +29,8 @@ export interface StudioNodeBase {
   defaultPivot: StudioVector3
   /** Optional parent group. Nested group editing is reserved for a later Alpha. */
   parentId?: string
+  /** Optional organizational folder. Folders never participate in transforms. */
+  folderId?: string
   /** Version-tolerant product metadata copied by duplicate and project-copy flows. */
   metadata?: Record<string, StudioMetadataValue>
 }
@@ -46,6 +48,7 @@ export interface StudioCube {
   pivot: StudioNodeBase['pivot']
   defaultPivot: StudioNodeBase['defaultPivot']
   parentId?: StudioNodeBase['parentId']
+  folderId?: StudioNodeBase['folderId']
   metadata?: StudioNodeBase['metadata']
 }
 
@@ -62,11 +65,27 @@ export interface StudioGroup {
   pivot: StudioNodeBase['pivot']
   defaultPivot: StudioNodeBase['defaultPivot']
   parentId?: StudioNodeBase['parentId']
+  folderId?: StudioNodeBase['folderId']
   metadata?: StudioNodeBase['metadata']
 }
 
 export type StudioModelElement = StudioCube
 export type StudioModelNode = StudioCube | StudioGroup
+
+/**
+ * An Outliner folder is editor organization only. It deliberately has no
+ * position, rotation, scale or pivot so renderer/modeling code cannot treat it
+ * as geometry by accident.
+ */
+export interface StudioModelFolder {
+  id: string
+  type: 'folder'
+  name: string
+  /** One child-folder level is supported in Snapshot 3. */
+  parentId?: string
+  collapsed: boolean
+  metadata?: Record<string, StudioMetadataValue>
+}
 
 export type StudioReferenceView = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom'
 
@@ -100,17 +119,22 @@ export type StudioCameraView =
 export type StudioViewportLayout = 1 | 2
 
 export interface StudioSnappingSettings {
-  /** World-unit step. `null` means Off. */
+  /** Move world-unit step. `null` means Off. Retained from the legacy transform setting. */
   transform: number | null
   customTransform: number
-  /** Degree step. `null` means Off. */
+  /** Resize world-unit step. `null` means Off. */
+  resize?: number | null
+  customResize?: number
+  /** Rotate degree step. `null` means Off. */
   rotation: number | null
+  customRotation?: number
 }
 
 export type StudioResizeDirection = 'symmetric' | 'positive' | 'negative'
-export type StudioControlMode = 'gizmos' | 'tactilismos' | 'hybrid'
+export type StudioControlMode = 'gizmos' | 'touch-gizmo' | 'hybrid' | 'tactilismos'
 export type StudioTransformSpace = 'global' | 'local' | 'parent'
 export type StudioEditorLanguage = 'en' | 'es'
+export type StudioTouchNavigationProfile = 'standard' | 'one-finger' | 'two-finger'
 
 export type StudioEditorBackgroundType =
   | 'dark-studio'
@@ -135,13 +159,27 @@ export interface StudioModelingSettings {
   resizeDirection: StudioResizeDirection
   controlMode: StudioControlMode
   transformSpace: StudioTransformSpace
-  /** Language foundation only; full application localization comes later. */
+  /** Persisted editor language; application-level preference is mirrored separately. */
   language: StudioEditorLanguage
+}
+
+export interface StudioCameraSettings {
+  orbitSensitivity: number
+  panSensitivity: number
+  zoomSensitivity: number
+  profile: StudioTouchNavigationProfile
+}
+
+export interface StudioExperimentalSettings {
+  /** Direct-touch rotation remains intentionally opt-in during Snapshot 3. */
+  touchRotate: boolean
 }
 
 export interface StudioEditorState {
   snapping: StudioSnappingSettings
   modeling: StudioModelingSettings
+  camera: StudioCameraSettings
+  experimental: StudioExperimentalSettings
   background: StudioEditorBackgroundSettings
   viewportLayout: StudioViewportLayout
   viewportViews: StudioCameraView[]
@@ -154,6 +192,8 @@ export interface StudioModel {
   identifier: string
   elements: StudioModelElement[]
   groups: StudioGroup[]
+  folders: StudioModelFolder[]
+  metadata?: Record<string, StudioMetadataValue>
   references: StudioReferenceImage[]
   editor: StudioEditorState
   createdAt: number
@@ -183,7 +223,8 @@ export interface CreateStudioModelInput {
   identifier: string
 }
 
-export type ModelTransformTool = 'select' | 'move' | 'rotate' | 'scale' | 'pivot'
+export type ModelTransformTool = 'select' | 'move' | 'rotate' | 'scale' | 'pivot' | 'inflate'
+export type ModelManipulationTool = Exclude<ModelTransformTool, 'select' | 'inflate'>
 
 export interface StudioElementTransform {
   position: StudioVector3

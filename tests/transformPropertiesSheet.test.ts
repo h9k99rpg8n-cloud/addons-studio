@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import TransformPropertiesSheet from '@/features/model-studio/components/TransformPropertiesSheet.vue'
 import { createStudioCube } from '@/core/model/modelFactory'
@@ -11,6 +12,8 @@ const BottomSheetStub = {
 }
 
 describe('Model Studio numeric properties', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
   it('commits a focused transform when the field loses focus', async () => {
     const cube = createStudioCube()
     const wrapper = mount(TransformPropertiesSheet, {

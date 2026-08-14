@@ -4,8 +4,10 @@ import { onErrorCaptured, ref } from 'vue'
 import AppButton from '@/components/common/AppButton.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { logger } from '@/core/errors/logger'
+import { useLocaleStore } from '@/stores/locale'
 
 const failed = ref(false)
+const locale = useLocaleStore()
 
 onErrorCaptured((error, _instance, info) => {
   failed.value = true
@@ -26,10 +28,10 @@ function reload(): void {
   <slot v-if="!failed" />
   <main v-else class="error-fallback">
     <div class="error-fallback__icon"><AppIcon name="alert-triangle" :size="30" /></div>
-    <p class="eyebrow">Addons Studio hit a snag</p>
-    <h1>Your local projects are still safe.</h1>
-    <p>Reload the app to try again. This screen does not delete or reset project data.</p>
-    <AppButton size="large" @click="reload">Reload Addons Studio</AppButton>
+    <p class="eyebrow">{{ locale.t('Addons Studio hit a snag') }}</p>
+    <h1>{{ locale.t('Your local projects are still safe.') }}</h1>
+    <p>{{ locale.t('Reload the app to try again. This screen does not delete or reset project data.') }}</p>
+    <AppButton size="large" @click="reload">{{ locale.t('Reload Addons Studio') }}</AppButton>
   </main>
 </template>
 

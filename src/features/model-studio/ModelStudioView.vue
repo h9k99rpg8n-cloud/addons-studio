@@ -7,18 +7,19 @@ import AppDialog from '@/components/common/AppDialog.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import IconButton from '@/components/common/IconButton.vue'
+import StudioIcon from '@/components/common/StudioIcon.vue'
 import { toAppError } from '@/core/errors/AppError'
 import {
   createElementCommand,
   createGroupCommand,
   createNodesCommand,
-  deleteElementCommand,
-  deleteGroupCommand,
+  captureModelStructure,
   deleteSelectionCommand,
   ModelCommandHistory,
   updateElementCommand,
   updateGroupCommand,
   updateHierarchyCommand,
+  updateModelStructureCommand,
   updateReferenceCommand,
 } from '@/core/model/modelHistory'
 import {
@@ -26,9 +27,22 @@ import {
   cloneStudioGroup,
   cloneStudioModel,
   cloneStudioReference,
+  cloneStudioModelFolder,
   createStudioCube,
   createStudioGroup,
+  resetEditorPreferences,
 } from '@/core/model/modelFactory'
+import {
+  createModelFolder,
+  ModelFolderError,
+  moveNodeToFolder,
+  removeModelFolder,
+  renameModelFolder,
+} from '@/core/model/modelFolders'
+import {
+  fitInflateHandle,
+  type StudioInflateHandle,
+} from '@/core/model/modelInflate'
 import {
   applyHierarchyState,
   buildNodeTransformState,
@@ -60,6 +74,12 @@ import {
 import { modelPersistenceService } from '@/core/model/modelPersistenceService'
 import { ModelEditorAssetRuntime } from '@/core/model/modelEditorAssetRuntime'
 import { modelRepository } from '@/core/model/modelRepository'
+import {
+  modelJsonFilename,
+  serializeStudioModelJson,
+} from '@/core/model/portability/modelJsonExporter'
+import { isValidModelIdentifier } from '@/core/model/modelValidation'
+import { LOCALE_STORAGE_KEY, useLocaleStore } from '@/stores/locale'
 import { useToastStore } from '@/stores/toasts'
 import type {
   ModelEditorAsset,
@@ -67,15 +87,19 @@ import type {
   StudioCameraView,
   StudioEditorBackgroundSettings,
   StudioEditorBackgroundType,
-  StudioGroup,
+  StudioCameraSettings,
+  StudioExperimentalSettings,
   StudioModel,
+  StudioModelFolder,
   StudioModelingSettings,
   StudioModelNode,
   StudioReferenceImage,
   StudioReferenceView,
+  StudioSnappingSettings,
   StudioVector3,
 } from '@/types/model'
 import type { StudioAxis } from '@/core/model/modelHierarchy'
+import { downloadBlob } from '@/utils/download'
 
 import ModelOutlinerSheet from './components/ModelOutlinerSheet.vue'
 import BackgroundSettingsSheet from './components/BackgroundSettingsSheet.vue'
@@ -89,6 +113,7 @@ import TransformPropertiesSheet from './components/TransformPropertiesSheet.vue'
 const props = defineProps<{ projectId: string; modelId: string }>()
 const router = useRouter()
 const toasts = useToastStore()
+const locale = useLocaleStore()
 const model = ref<StudioModel>()
 const assets = shallowRef<ModelEditorAsset[]>([])
 const assetUrls = ref<Record<string, string>>({})
@@ -107,15 +132,29 @@ const pivotPropertiesOpen = ref(false)
 const referencePropertiesOpen = ref(false)
 const referencesOpen = ref(false)
 const backgroundOpen = ref(false)
+const guideWorkflowOpen = ref(false)
 const outlinerOpen = ref(false)
 const moreOpen = ref(false)
 const viewsOpen = ref(false)
-const snappingOpen = ref(false)
 const settingsOpen = ref(false)
+const resetSettingsOpen = ref(false)
+const exportModelOpen = ref(false)
+const exportName = ref('')
+const exportIdentifier = ref('')
+const exportError = ref('')
+const exportBusy = ref(false)
+const exportApplyIdentity = ref(false)
 const mirrorOpen = ref(false)
 const arrangeOpen = ref(false)
 const objectActionsOpen = ref(false)
 const moveToGroupOpen = ref(false)
+const moveToFolderOpen = ref(false)
+const folderDialogOpen = ref(false)
+const folderName = ref('')
+const folderParentId = ref<string>()
+const folderRenameTarget = ref<StudioModelFolder>()
+const folderDeleteOpen = ref(false)
+const folderDeleteTarget = ref<StudioModelFolder>()
 const deleteSelectionOpen = ref(false)
 const multiSelectMode = ref(false)
 const isolatedIds = ref<string[]>([])
@@ -123,8 +162,6 @@ const renameOpen = ref(false)
 const renameValue = ref('')
 const renameTargetId = ref<string>()
 const renameTargetType = ref<'cube' | 'group'>('cube')
-const deleteGroupOpen = ref(false)
-const deleteGroupTarget = ref<StudioGroup>()
 const deleteReferenceOpen = ref(false)
 const deleteReferenceTarget = ref<StudioReferenceImage>()
 const referenceInput = ref<HTMLInputElement>()
@@ -136,6 +173,7 @@ const historyVersion = ref(0)
 const history = new ModelCommandHistory()
 const activeViewport = ref(0)
 const maximizedViewport = ref<number>()
+const inflateSource = ref<StudioInflateHandle>()
 let numericSession: StudioNodeTransformSession | undefined
 let pivotSession: StudioNodeTransformSession | undefined
 let saveSequence = 0
@@ -170,6 +208,9 @@ const selectionVisible = computed(() => selectedNodes.value.length > 0
 const selectedAreCubes = computed(() => selectedNodes.value.length > 0
   && selectedNodes.value.every((node) => node.type === 'cube'),
 )
+const selectionCanMoveToFolder = computed(() => selectedNodes.value.length > 0
+  && selectedNodes.value.every((node) => node.type === 'group' || !node.parentId),
+)
 const canDuplicateAgain = computed(() => Boolean(
   model.value
   && duplicateMemory.value?.offset
@@ -197,7 +238,34 @@ const visibleViewportIndexes = computed(() => {
   return Array.from({ length: viewportCount.value }, (_, index) => index)
 })
 const currentTransformSnap = computed(() => model.value?.editor.snapping.transform ?? null)
+const currentResizeSnap = computed(() => model.value?.editor.snapping.resize
+  ?? model.value?.editor.snapping.transform
+  ?? null)
 const currentRotationSnap = computed(() => model.value?.editor.snapping.rotation ?? null)
+const interactionLocked = computed(() => [
+  propertiesOpen.value,
+  pivotPropertiesOpen.value,
+  referencePropertiesOpen.value,
+  referencesOpen.value,
+  backgroundOpen.value,
+  guideWorkflowOpen.value,
+  outlinerOpen.value,
+  moreOpen.value,
+  viewsOpen.value,
+  settingsOpen.value,
+  mirrorOpen.value,
+  arrangeOpen.value,
+  objectActionsOpen.value,
+  moveToGroupOpen.value,
+  moveToFolderOpen.value,
+  deleteSelectionOpen.value,
+  renameOpen.value,
+  deleteReferenceOpen.value,
+  resetSettingsOpen.value,
+  exportModelOpen.value,
+  folderDialogOpen.value,
+  folderDeleteOpen.value,
+].some(Boolean))
 
 const tools: readonly { id: ModelTransformTool; label: string; icon: string }[] = [
   { id: 'select', label: 'Select', icon: 'pointer' },
@@ -205,17 +273,7 @@ const tools: readonly { id: ModelTransformTool; label: string; icon: string }[] 
   { id: 'rotate', label: 'Rotate', icon: 'rotate-3d' },
   { id: 'scale', label: 'Resize', icon: 'scale' },
   { id: 'pivot', label: 'Pivot', icon: 'crosshair' },
-]
-
-const cameraViews: readonly { id: StudioCameraView; label: string }[] = [
-  { id: 'perspective', label: 'Perspective' },
-  { id: 'isometric', label: 'Isometric' },
-  { id: 'front', label: 'Front' },
-  { id: 'back', label: 'Back' },
-  { id: 'left', label: 'Left' },
-  { id: 'right', label: 'Right' },
-  { id: 'top', label: 'Top' },
-  { id: 'bottom', label: 'Bottom' },
+  { id: 'inflate', label: 'Inflate', icon: 'inflate' },
 ]
 
 function reportImageError(key: string, message: string): void {
@@ -260,6 +318,10 @@ onMounted(async () => {
       loadError.value = 'This model is no longer available in the project.'
       return
     }
+    if (!globalThis.localStorage?.getItem(LOCALE_STORAGE_KEY) && storedModel.editor.modeling.language === 'es') {
+      locale.setLanguage('es')
+    }
+    storedModel.editor.modeling.language = locale.language
     model.value = storedModel
     assets.value = storedAssets
     refreshAssetUrls()
@@ -333,6 +395,26 @@ function addCube(): void {
 
 function addGroup(): void {
   if (!model.value) return
+  if (selectedAreCubes.value && selectedCubes.value.length >= 2) {
+    const before = captureModelStructure(model.value)
+    const group = createStudioGroup(model.value.groups.length, selectedCubes.value)
+    const folderIds = new Set(selectedCubes.value.map((cube) => cube.folderId))
+    group.folderId = folderIds.size === 1 ? selectedCubes.value[0]?.folderId : undefined
+    const selected = new Set(selectedCubes.value.map((cube) => cube.id))
+    const after = {
+      elements: model.value.elements.map((cube) => selected.has(cube.id)
+        ? { ...cloneStudioCube(cube), parentId: group.id, folderId: undefined }
+        : cloneStudioCube(cube)),
+      groups: [...model.value.groups.map(cloneStudioGroup), group],
+      folders: model.value.folders.map(cloneStudioModelFolder),
+    }
+    history.execute(updateModelStructureCommand(before, after, 'Create group from selection'), model.value)
+    selectedNodeIds.value = [group.id]
+    multiSelectMode.value = false
+    bumpHistory()
+    scheduleSave()
+    return
+  }
   const group = createStudioGroup(model.value.groups.length)
   history.execute(createGroupCommand(group, model.value.groups.length), model.value)
   bumpHistory()
@@ -410,18 +492,6 @@ function duplicateAgain(): void {
   duplicateMemory.value = { ids: [...duplicate.selectedIds], offset: previousOffset }
   objectActionsOpen.value = false
   bumpHistory()
-  scheduleSave()
-}
-
-function deleteElement(id: string): void {
-  if (!model.value) return
-  const index = model.value.elements.findIndex((element) => element.id === id)
-  const element = model.value.elements[index]
-  if (!element || index < 0) return
-  history.execute(deleteElementCommand(element, index), model.value)
-  bumpHistory()
-  if (selectedNodeId.value === id) selectedNodeId.value = undefined
-  objectActionsOpen.value = false
   scheduleSave()
 }
 
@@ -581,32 +651,20 @@ function exitIsolation(): void {
   isolatedIds.value = []
 }
 
-function confirmDeleteGroup(id: string): void {
-  const group = model.value?.groups.find((entry) => entry.id === id)
-  if (!group) return
-  outlinerOpen.value = false
-  objectActionsOpen.value = false
-  deleteGroupTarget.value = group
-  deleteGroupOpen.value = true
-}
-
-function deleteGroup(): void {
-  if (!model.value || !deleteGroupTarget.value) return
-  const index = model.value.groups.findIndex((entry) => entry.id === deleteGroupTarget.value?.id)
-  if (index < 0) return
-  const children = getGroupChildren(model.value, deleteGroupTarget.value.id)
-  history.execute(deleteGroupCommand(deleteGroupTarget.value, index, children), model.value)
-  if (selectedNodeId.value === deleteGroupTarget.value.id) selectedNodeId.value = undefined
-  deleteGroupOpen.value = false
-  bumpHistory()
-  scheduleSave()
-}
-
 function moveCubeToGroup(groupId?: string): void {
   if (!model.value || !selectedCubes.value.length) return
   const selectedIds = new Set(selectedCubes.value.map((cube) => cube.id))
   const before = selectedCubes.value.map(cloneStudioCube)
-  const after = selectedCubes.value.map((cube) => ({ ...cloneStudioCube(cube), parentId: groupId }))
+  const after = selectedCubes.value.map((cube) => {
+    const sourceFolderId = cube.parentId
+      ? model.value?.groups.find((group) => group.id === cube.parentId)?.folderId
+      : cube.folderId
+    return {
+      ...cloneStudioCube(cube),
+      parentId: groupId,
+      folderId: groupId ? undefined : sourceFolderId,
+    }
+  })
   const target = groupId ? model.value.groups.find((group) => group.id === groupId) : undefined
   const remainingTargetChildren = target
     ? getGroupChildren(model.value, target.id).filter((cube) => !selectedIds.has(cube.id))
@@ -636,6 +694,160 @@ function moveCubeToGroup(groupId?: string): void {
   scheduleSave()
 }
 
+function openCreateFolder(parentId?: string): void {
+  folderRenameTarget.value = undefined
+  folderParentId.value = parentId
+  folderName.value = ''
+  outlinerOpen.value = false
+  folderDialogOpen.value = true
+}
+
+function openRenameFolder(folderId: string): void {
+  const folder = model.value?.folders.find((entry) => entry.id === folderId)
+  if (!folder) return
+  folderRenameTarget.value = folder
+  folderParentId.value = folder.parentId
+  folderName.value = folder.name
+  outlinerOpen.value = false
+  folderDialogOpen.value = true
+}
+
+function saveModelFolder(): void {
+  if (!model.value) return
+  try {
+    const before = captureModelStructure(model.value)
+    const folders = model.value.folders.map(cloneStudioModelFolder)
+    if (folderRenameTarget.value) {
+      const index = folders.findIndex((entry) => entry.id === folderRenameTarget.value?.id)
+      if (index < 0) return
+      folders.splice(index, 1, renameModelFolder(folders[index]!, folderName.value))
+    } else {
+      folders.push(createModelFolder(model.value, folderName.value || 'Folder', folderParentId.value))
+    }
+    history.execute(updateModelStructureCommand(before, {
+      elements: model.value.elements.map(cloneStudioCube),
+      groups: model.value.groups.map(cloneStudioGroup),
+      folders,
+    }, folderRenameTarget.value ? 'Rename model folder' : 'Create model folder'), model.value)
+    folderDialogOpen.value = false
+    bumpHistory()
+    scheduleSave()
+  } catch (error) {
+    toasts.push({
+      type: 'warning',
+      message: error instanceof ModelFolderError ? error.message : 'The model folder could not be saved.',
+    })
+  }
+}
+
+function confirmDeleteModelFolder(folderId: string): void {
+  const folder = model.value?.folders.find((entry) => entry.id === folderId)
+  if (!folder) return
+  folderDeleteTarget.value = folder
+  outlinerOpen.value = false
+  folderDeleteOpen.value = true
+}
+
+function deleteModelFolder(): void {
+  if (!model.value || !folderDeleteTarget.value) return
+  try {
+    const before = captureModelStructure(model.value)
+    const after = removeModelFolder(model.value, folderDeleteTarget.value.id)
+    history.execute(updateModelStructureCommand(before, after, 'Delete model folder'), model.value)
+    folderDeleteOpen.value = false
+    bumpHistory()
+    scheduleSave()
+  } catch (error) {
+    toasts.push({ type: 'warning', message: error instanceof Error ? error.message : 'The model folder could not be deleted.' })
+  }
+}
+
+function moveSelectionToFolder(folderId?: string): void {
+  if (!model.value || !selectedNodeIds.value.length) return
+  try {
+    const before = captureModelStructure(model.value)
+    const working = cloneStudioModel(model.value)
+    for (const id of normalizeSelectionIds(working, selectedNodeIds.value)) {
+      const moved = moveNodeToFolder(working, id, folderId)
+      working.elements = moved.elements
+      working.groups = moved.groups
+    }
+    history.execute(updateModelStructureCommand(before, captureModelStructure(working), 'Move selection to folder'), model.value)
+    moveToFolderOpen.value = false
+    objectActionsOpen.value = false
+    bumpHistory()
+    scheduleSave()
+  } catch (error) {
+    toasts.push({ type: 'warning', message: error instanceof Error ? error.message : 'The selection could not be moved.' })
+  }
+}
+
+function selectInflateHandle(handle: StudioInflateHandle): void {
+  if (!model.value) return
+  if (!inflateSource.value) {
+    inflateSource.value = handle
+    return
+  }
+  const source = model.value.elements.find((cube) => cube.id === inflateSource.value?.cubeId)
+  const target = model.value.elements.find((cube) => cube.id === handle.cubeId)
+  if (!source || !target) {
+    inflateSource.value = undefined
+    return
+  }
+  try {
+    const fitted = fitInflateHandle(source, inflateSource.value, target, handle, currentResizeSnap.value)
+    history.execute(updateElementCommand(source, fitted.cube, `Inflate fit ${fitted.axes.map((axis) => axis.toUpperCase()).join('/')}`), model.value)
+    selectedNodeId.value = source.id
+    inflateSource.value = undefined
+    bumpHistory()
+    scheduleSave()
+  } catch (error) {
+    toasts.push({ type: 'warning', message: error instanceof Error ? error.message : 'Those Inflate points cannot be fitted.' })
+  }
+}
+
+function openExportModel(): void {
+  if (!model.value) return
+  moreOpen.value = false
+  exportName.value = model.value.name
+  exportIdentifier.value = model.value.identifier
+  exportApplyIdentity.value = false
+  exportError.value = ''
+  exportModelOpen.value = true
+}
+
+function exportModelJson(): void {
+  if (!model.value) return
+  exportError.value = ''
+  if (!exportName.value.trim()) {
+    exportError.value = 'Model name is required.'
+    return
+  }
+  if (!isValidModelIdentifier(exportIdentifier.value.trim())) {
+    exportError.value = 'Use geometry.namespace.name with lowercase letters, numbers, and underscores.'
+    return
+  }
+  exportBusy.value = true
+  try {
+    const json = serializeStudioModelJson(model.value, {
+      name: exportName.value,
+      identifier: exportIdentifier.value,
+    })
+    downloadBlob(new Blob([json], { type: 'application/json' }), modelJsonFilename(exportName.value))
+    if (exportApplyIdentity.value) {
+      model.value.name = exportName.value.trim()
+      model.value.identifier = exportIdentifier.value.trim()
+      scheduleSave()
+    }
+    exportModelOpen.value = false
+    toasts.push({ type: 'success', message: 'Model JSON exported' })
+  } catch (error) {
+    exportError.value = error instanceof Error ? error.message : 'Model could not be exported.'
+  } finally {
+    exportBusy.value = false
+  }
+}
+
 function undo(): void {
   if (!model.value) return
   const command = history.undo(model.value)
@@ -655,7 +867,9 @@ function redo(): void {
 
 function chooseTool(nextTool: ModelTransformTool): void {
   if (nextTool !== 'select' && !selectionTransformable.value) return
+  if (nextTool === 'inflate' && (selectionCount.value !== 1 || selectedNode.value?.type !== 'cube')) return
   if (selectionCount.value > 1 && !['select', 'move'].includes(nextTool)) return
+  if (nextTool !== 'inflate') inflateSource.value = undefined
   tool.value = nextTool
 }
 
@@ -719,10 +933,9 @@ function commitPivot(payload: { pivot: StudioVector3; label: string }): void {
   pivotSession = undefined
 }
 
-function setCameraView(view: StudioCameraView): void {
+function setCameraView(view: StudioCameraView, viewportIndex = activeViewport.value): void {
   if (!model.value) return
-  model.value.editor.viewportViews[activeViewport.value] = view
-  viewsOpen.value = false
+  model.value.editor.viewportViews[viewportIndex] = view
   scheduleSave()
 }
 
@@ -739,29 +952,44 @@ function toggleMaximize(index: number): void {
   activeViewport.value = index
 }
 
-function setTransformSnap(value: number | null): void {
-  if (!model.value) return
-  model.value.editor.snapping.transform = value
-  scheduleSave()
-}
-
-function setCustomTransformSnap(value: number): void {
-  if (!model.value) return
-  const normalized = Math.max(0.001, Number(value) || 0.001)
-  model.value.editor.snapping.customTransform = normalized
-  model.value.editor.snapping.transform = normalized
-  scheduleSave()
-}
-
-function setRotationSnap(value: number | null): void {
-  if (!model.value) return
-  model.value.editor.snapping.rotation = value
-  scheduleSave()
-}
-
 function updateModelingSettings(settings: StudioModelingSettings): void {
   if (!model.value) return
-  model.value.editor.modeling = { ...settings }
+  model.value.editor.modeling = {
+    ...settings,
+    controlMode: settings.controlMode === 'tactilismos' ? 'touch-gizmo' : settings.controlMode,
+  }
+  if (locale.language !== settings.language) locale.setLanguage(settings.language)
+  scheduleSave()
+}
+
+function updateSnappingSettings(settings: StudioSnappingSettings): void {
+  if (!model.value) return
+  model.value.editor.snapping = { ...settings }
+  scheduleSave()
+}
+
+function updateCameraSettings(settings: StudioCameraSettings): void {
+  if (!model.value) return
+  model.value.editor.camera = { ...settings }
+  scheduleSave()
+}
+
+function updateExperimentalSettings(settings: StudioExperimentalSettings): void {
+  if (!model.value) return
+  model.value.editor.experimental = { ...settings }
+  scheduleSave()
+}
+
+function updateTransformSpace(space: StudioModelingSettings['transformSpace']): void {
+  if (!model.value) return
+  model.value.editor.modeling.transformSpace = space
+  scheduleSave()
+}
+
+function resetModelStudioSettings(): void {
+  if (!model.value) return
+  model.value.editor = resetEditorPreferences(model.value.editor, locale.language)
+  resetSettingsOpen.value = false
   scheduleSave()
 }
 
@@ -986,29 +1214,29 @@ function showOutliner(): void {
     <header class="studio-topbar">
       <IconButton
         icon="arrow-left"
-        label="Back to Models"
+        :label="locale.t('Back to Models')"
         @click="router.push({ name: 'models', params: { projectId } })"
       />
       <div class="studio-topbar__title">
-        <strong>{{ model?.name ?? 'Model Studio' }}</strong>
+        <strong>{{ model?.name ?? locale.t('Model Studio') }}</strong>
         <small :class="`save-status--${saveStatus}`">
-          {{ saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Saved' }}
+          {{ locale.t(saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Saved') }}
         </small>
       </div>
-      <IconButton icon="undo" label="Undo" :disabled="!canUndo" @click="undo" />
-      <IconButton icon="redo" label="Redo" :disabled="!canRedo" @click="redo" />
-      <IconButton icon="more-vertical" label="Model menu" @click="moreOpen = true" />
+      <IconButton icon="undo" :label="locale.t('Undo')" :disabled="!canUndo" @click="undo" />
+      <IconButton icon="redo" :label="locale.t('Redo')" :disabled="!canRedo" @click="redo" />
+      <IconButton icon="more-vertical" :label="locale.t('Model menu')" @click="moreOpen = true" />
     </header>
 
-    <section v-if="loading" class="studio-loading" aria-label="Opening Model Studio">
-      <div class="studio-loading__message"><span class="spinner" />Preparing 3D workspace…</div>
+    <section v-if="loading" class="studio-loading" :aria-label="locale.t('Opening Model Studio')">
+      <div class="studio-loading__message"><span class="spinner" />{{ locale.t('Preparing 3D workspace…') }}</div>
     </section>
 
     <section v-else-if="loadError || !model" class="studio-error">
       <span><AppIcon name="alert-triangle" :size="31" /></span>
-      <h1>Model unavailable</h1>
-      <p>{{ loadError || 'This model could not be found.' }}</p>
-      <AppButton @click="router.replace({ name: 'models', params: { projectId } })">Back to Models</AppButton>
+      <h1>{{ locale.t('Model unavailable') }}</h1>
+      <p>{{ loadError || locale.t('This model could not be found.') }}</p>
+      <AppButton @click="router.replace({ name: 'models', params: { projectId } })">{{ locale.t('Back to Models') }}</AppButton>
     </section>
 
     <template v-else>
@@ -1033,66 +1261,55 @@ function showOutliner(): void {
           :maximized="maximizedViewport === index"
           :can-maximize="viewportCount > 1"
           :transform-snap="currentTransformSnap"
+          :resize-snap="currentResizeSnap"
           :rotation-snap="currentRotationSnap"
           :resize-direction="model.editor.modeling.resizeDirection"
           :control-mode="model.editor.modeling.controlMode"
           :transform-space="model.editor.modeling.transformSpace"
+          :camera-settings="model.editor.camera"
+          :touch-rotate-enabled="model.editor.experimental.touchRotate"
+          :interaction-locked="interactionLocked"
+          :inflate-source="inflateSource"
           :multi-select="multiSelectMode"
           :isolated-element-ids="isolatedIds"
           @activate="activeViewport = index"
           @toggle-maximize="toggleMaximize(index)"
+          @update-view="setCameraView($event, index)"
+          @update-transform-space="updateTransformSpace"
           @select-node="selectNode"
           @select-reference="selectReference"
           @preview-hierarchy="previewHierarchy"
           @commit-hierarchy="commitHierarchy"
+          @select-inflate-handle="selectInflateHandle"
           @error="handleViewportError"
         />
       </section>
 
-      <nav class="studio-toolbar" aria-label="Modeling tools">
+      <nav class="studio-toolbar" :aria-label="locale.t('Modeling tools')">
         <div class="studio-toolbar__scroll">
           <button
             v-for="entry in tools"
             :key="entry.id"
             type="button"
             :class="{ 'tool-button--active': tool === entry.id }"
-            :disabled="entry.id !== 'select' && (!selectionTransformable || (selectionCount > 1 && entry.id !== 'move'))"
+            :disabled="entry.id !== 'select' && (!selectionTransformable || (selectionCount > 1 && entry.id !== 'move') || (entry.id === 'inflate' && selectedNode?.type !== 'cube'))"
             @click="chooseTool(entry.id)"
           >
-            <AppIcon :name="entry.icon" :size="21" />
-            <span>{{ entry.label }}</span>
-          </button>
-          <button type="button" @click="viewsOpen = true">
-            <AppIcon name="camera" :size="21" />
-            <span>Views</span>
-          </button>
-          <button type="button" @click="snappingOpen = true">
-            <AppIcon name="magnet" :size="21" />
-            <span>Snap</span>
+            <StudioIcon v-if="entry.id === 'inflate'" name="inflate" :size="21" />
+            <AppIcon v-else :name="entry.icon" :size="21" />
+            <span>{{ locale.t(entry.label) }}</span>
           </button>
           <button type="button" :class="{ 'tool-button--active': multiSelectMode }" @click="setMultiSelect(!multiSelectMode)">
             <AppIcon name="check" :size="21" />
-            <span>{{ multiSelectMode ? `Multi ${selectionCount}` : 'Multi' }}</span>
-          </button>
-          <button type="button" @click="settingsOpen = true">
-            <AppIcon name="settings" :size="21" />
-            <span>{{ model.editor.modeling.transformSpace }}</span>
+            <span>{{ multiSelectMode ? `${locale.t('Multi-select')} ${selectionCount}` : locale.t('Multi-select') }}</span>
           </button>
           <button type="button" class="tool-button--create" @click="addCube">
             <AppIcon name="plus" :size="21" />
-            <span>Cube</span>
+            <span>{{ locale.t('Cube') }}</span>
           </button>
           <button type="button" @click="addGroup">
             <AppIcon name="folder-plus" :size="21" />
-            <span>Group</span>
-          </button>
-          <button
-            type="button"
-            :disabled="importingReference"
-            @click="referencesOpen = true"
-          >
-            <AppIcon name="image-plus" :size="21" />
-            <span>References</span>
+            <span>{{ locale.t('Group') }}</span>
           </button>
           <button
             v-if="selectionCount === 1 && selectedNode && selectionTransformable"
@@ -1100,11 +1317,11 @@ function showOutliner(): void {
             @click="propertiesOpen = true"
           >
             <AppIcon name="sliders" :size="21" />
-            <span>Values</span>
+            <span>{{ locale.t('Values') }}</span>
           </button>
           <button v-if="selectionCount" type="button" @click="objectActionsOpen = true">
             <AppIcon name="more-vertical" :size="21" />
-            <span>Object</span>
+            <span>{{ locale.t('Object') }}</span>
           </button>
           <button
             v-if="selectedReference"
@@ -1112,7 +1329,7 @@ function showOutliner(): void {
             @click="referencePropertiesOpen = true"
           >
             <AppIcon name="sliders" :size="21" />
-            <span>Reference</span>
+            <span>{{ locale.t('Reference') }}</span>
           </button>
         </div>
       </nav>
@@ -1143,8 +1360,16 @@ function showOutliner(): void {
       <ModelSettingsSheet
         :open="settingsOpen"
         :settings="model.editor.modeling"
+        :snapping="model.editor.snapping"
+        :camera="model.editor.camera"
+        :experimental="model.editor.experimental"
         @close="settingsOpen = false"
         @update="updateModelingSettings"
+        @update-snapping="updateSnappingSettings"
+        @update-camera="updateCameraSettings"
+        @update-experimental="updateExperimentalSettings"
+        @open-background="settingsOpen = false; guideWorkflowOpen = true"
+        @request-reset="settingsOpen = false; resetSettingsOpen = true"
       />
       <PivotPropertiesSheet
         :open="pivotPropertiesOpen"
@@ -1190,158 +1415,111 @@ function showOutliner(): void {
         :model="model"
         :selected-node-id="selectedNodeId"
         :selected-node-ids="selectedNodeIds"
-        :selected-reference-id="selectedReferenceId"
         :multi-select="multiSelectMode"
         :isolation-active="isolationActive"
         @close="outlinerOpen = false"
         @select-node="selectNodeFromOutliner"
-        @select-reference="editReference"
         @create-group="addGroup"
-        @rename-node="beginRenameNode"
-        @duplicate-node="duplicateNode"
+        @create-folder="openCreateFolder"
+        @rename-folder="openRenameFolder"
+        @delete-folder="confirmDeleteModelFolder"
         @show-actions="showObjectActions"
         @toggle-element="toggleElement"
-        @delete-element="deleteElement"
         @toggle-group="toggleGroup"
         @toggle-node-lock="toggleNodeLock"
         @set-multi-select="setMultiSelect"
         @exit-isolation="exitIsolation"
-        @delete-group="confirmDeleteGroup"
-        @edit-reference="editReference"
-        @toggle-reference="toggleReference"
-        @delete-reference="confirmDeleteReference"
       />
 
       <BottomSheet
         :open="viewsOpen"
-        title="Views"
-        :description="`Viewport ${activeViewport + 1} · choose a camera direction or layout`"
+        :title="locale.t('Viewport Layout')"
+        :description="locale.t('Choose one or two mobile-optimized viewports')"
         @close="viewsOpen = false"
       >
         <div class="view-sheet">
           <section>
-            <h3>Layout</h3>
+            <h3>{{ locale.t('Layout') }}</h3>
             <div class="choice-grid choice-grid--two">
-              <button type="button" :class="{ active: viewportCount === 1 }" @click="setViewportLayout(1)">1 Viewport</button>
-              <button type="button" :class="{ active: viewportCount === 2 }" @click="setViewportLayout(2)">2 Viewports</button>
+              <button type="button" :class="{ active: viewportCount === 1 }" @click="setViewportLayout(1)">{{ locale.t('1 Viewport') }}</button>
+              <button type="button" :class="{ active: viewportCount === 2 }" @click="setViewportLayout(2)">{{ locale.t('2 Viewports') }}</button>
             </div>
-            <p>Three and four viewports are coming later after mobile performance validation.</p>
-          </section>
-          <section>
-            <h3>Viewport {{ activeViewport + 1 }}</h3>
-            <div class="choice-grid">
-              <button
-                v-for="viewEntry in cameraViews"
-                :key="viewEntry.id"
-                type="button"
-                :class="{ active: model.editor.viewportViews[activeViewport] === viewEntry.id }"
-                @click="setCameraView(viewEntry.id)"
-              >
-                {{ viewEntry.label }}
-              </button>
-            </div>
-          </section>
-        </div>
-      </BottomSheet>
-
-      <BottomSheet
-        :open="snappingOpen"
-        title="Snapping"
-        description="Gizmos snap while numeric fields remain exact"
-        @close="snappingOpen = false"
-      >
-        <div class="snap-sheet">
-          <section>
-            <h3>Move and Size</h3>
-            <div class="snap-options">
-              <button type="button" :class="{ active: currentTransformSnap === null }" @click="setTransformSnap(null)">Off</button>
-              <button v-for="step in [1, 0.5, 0.25]" :key="step" type="button" :class="{ active: currentTransformSnap === step }" @click="setTransformSnap(step)">{{ step }}</button>
-            </div>
-            <label>
-              <span>Custom</span>
-              <input
-                :value="model.editor.snapping.customTransform"
-                type="number"
-                inputmode="decimal"
-                min="0.001"
-                step="0.001"
-                @change="setCustomTransformSnap(Number(($event.target as HTMLInputElement).value))"
-              />
-            </label>
-          </section>
-          <section>
-            <h3>Rotation</h3>
-            <div class="snap-options snap-options--rotation">
-              <button type="button" :class="{ active: currentRotationSnap === null }" @click="setRotationSnap(null)">Off</button>
-              <button v-for="step in [1, 5, 15, 22.5, 45, 90]" :key="step" type="button" :class="{ active: currentRotationSnap === step }" @click="setRotationSnap(step)">{{ step }}°</button>
-            </div>
+            <p>{{ locale.t('Three and four viewports are coming later after mobile performance validation.') }}</p>
           </section>
         </div>
       </BottomSheet>
 
       <BottomSheet
         :open="objectActionsOpen && selectionCount > 0"
-        :title="selectionCount > 1 ? `${selectionCount} Selected Objects` : selectedNode?.name ?? 'Object'"
-        :description="selectionCount > 1 ? 'Multi-selection actions' : selectedNode?.type === 'group' ? 'Group actions' : 'Cube actions'"
+        :title="selectionCount > 1 ? `${selectionCount} ${locale.t('Selected Objects')}` : selectedNode?.name ?? locale.t('Object')"
+        :description="locale.t(selectionCount > 1 ? 'Multi-selection actions' : selectedNode?.type === 'group' ? 'Group actions' : 'Cube actions')"
         @close="objectActionsOpen = false"
       >
         <div class="studio-menu">
           <button type="button" @click="duplicateNode()">
             <span><AppIcon name="copy" :size="22" /></span>
-            <span><strong>Duplicate</strong><small>Creates an independent copy with a new ID</small></span>
+            <span><strong>{{ locale.t('Duplicate') }}</strong><small>{{ locale.t('Creates an independent copy with a new ID') }}</small></span>
           </button>
           <button type="button" :disabled="!canDuplicateAgain" @click="duplicateAgain">
             <span><AppIcon name="copy" :size="22" /></span>
-            <span><strong>Duplicate Again</strong><small>{{ canDuplicateAgain ? 'Repeats the previous duplicate offset' : 'Move a duplicate first to record its offset' }}</small></span>
+            <span><strong>{{ locale.t('Duplicate Again') }}</strong><small>{{ locale.t(canDuplicateAgain ? 'Repeats the previous duplicate offset' : 'Move a duplicate first to record its offset') }}</small></span>
           </button>
           <button v-if="selectionCount === 1 && selectedNode" type="button" @click="beginRenameNode(selectedNode.id)">
             <span><AppIcon name="pencil" :size="22" /></span>
-            <span><strong>Rename</strong><small>Change the Outliner name</small></span>
+            <span><strong>{{ locale.t('Rename') }}</strong><small>{{ locale.t('Change the Outliner name') }}</small></span>
           </button>
           <button v-if="selectionCount === 1 && selectedNode" type="button" :disabled="!selectionTransformable" @click="objectActionsOpen = false; pivotPropertiesOpen = true">
             <span><AppIcon name="crosshair" :size="22" /></span>
-            <span><strong>Edit Pivot</strong><small>Center, reset, move, or send to origin</small></span>
+            <span><strong>{{ locale.t('Edit Pivot') }}</strong><small>{{ locale.t('Center, reset, move, or send to origin') }}</small></span>
+          </button>
+          <button v-if="selectionCount >= 2 && selectedAreCubes" type="button" :disabled="!selectionTransformable" @click="objectActionsOpen = false; addGroup()">
+            <span><AppIcon name="boxes" :size="22" /></span>
+            <span><strong>{{ locale.t('Create Group') }}</strong><small>{{ locale.t('Create one structural group from this selection') }}</small></span>
           </button>
           <button v-if="selectedAreCubes" type="button" :disabled="!selectionTransformable" @click="objectActionsOpen = false; moveToGroupOpen = true">
             <span><AppIcon name="folder-output" :size="22" /></span>
-            <span><strong>Move to Group</strong><small>Place the cube in a group or back at root</small></span>
+            <span><strong>{{ locale.t('Move to Group') }}</strong><small>{{ locale.t('Place the cube in a group or back at root') }}</small></span>
+          </button>
+          <button type="button" :disabled="!selectionCanMoveToFolder" @click="objectActionsOpen = false; moveToFolderOpen = true">
+            <span><AppIcon name="folder-output" :size="22" /></span>
+            <span><strong>{{ locale.t('Move to Folder') }}</strong><small>{{ locale.t(selectionCanMoveToFolder ? 'Organize cubes or groups without transforming them' : 'Move the containing group instead of one of its children') }}</small></span>
           </button>
           <button type="button" :disabled="!selectionTransformable" @click="objectActionsOpen = false; mirrorOpen = true">
             <span><AppIcon name="layers" :size="22" /></span>
-            <span><strong>Mirror</strong><small>Mirror in place or create a mirrored copy</small></span>
+            <span><strong>{{ locale.t('Mirror') }}</strong><small>{{ locale.t('Mirror in place or create a mirrored copy') }}</small></span>
           </button>
           <button v-if="selectedAreCubes && selectionCount >= 2" type="button" :disabled="!selectionTransformable" @click="objectActionsOpen = false; arrangeOpen = true">
             <span><AppIcon name="move-3d" :size="22" /></span>
-            <span><strong>Align & Distribute</strong><small>Arrange selected cube bounds on X, Y, or Z</small></span>
+            <span><strong>{{ locale.t('Align & Distribute') }}</strong><small>{{ locale.t('Arrange selected cube bounds on X, Y, or Z') }}</small></span>
           </button>
           <button type="button" @click="toggleNodeLock()">
             <span><AppIcon :name="selectionDirectlyLocked ? 'unlock' : 'lock'" :size="22" /></span>
-            <span><strong>{{ selectionDirectlyLocked ? 'Unlock Selection' : 'Lock Selection' }}</strong><small>Locked objects remain visible and accessible here</small></span>
+            <span><strong>{{ locale.t(selectionDirectlyLocked ? 'Unlock Selection' : 'Lock Selection') }}</strong><small>{{ locale.t('Locked objects remain visible and accessible here') }}</small></span>
           </button>
           <button type="button" @click="setSelectionVisibility(!selectionVisible)">
             <span><AppIcon :name="selectionVisible ? 'eye-off' : 'eye'" :size="22" /></span>
-            <span><strong>{{ selectionVisible ? 'Hide Selection' : 'Show Selection' }}</strong><small>Changes intended model visibility</small></span>
+            <span><strong>{{ locale.t(selectionVisible ? 'Hide Selection' : 'Show Selection') }}</strong><small>{{ locale.t('Changes intended model visibility') }}</small></span>
           </button>
           <button type="button" @click="isolationActive ? exitIsolation() : isolateSelection()">
             <span><AppIcon name="eye" :size="22" /></span>
-            <span><strong>{{ isolationActive ? 'Exit Isolation / Show All' : 'Isolate Selection' }}</strong><small>Temporary editor-only visibility</small></span>
+            <span><strong>{{ locale.t(isolationActive ? 'Exit Isolation / Show All' : 'Isolate Selection') }}</strong><small>{{ locale.t('Temporary editor-only visibility') }}</small></span>
           </button>
           <button type="button" class="menu-action--danger" :disabled="selectionHasLockedNode" @click="confirmDeleteSelection">
             <span><AppIcon name="trash" :size="22" /></span>
-            <span><strong>Delete Selection</strong><small>{{ selectionHasLockedNode ? 'Unlock objects or their parent group before deleting' : 'Undo is available during this session' }}</small></span>
+            <span><strong>{{ locale.t('Delete Selection') }}</strong><small>{{ locale.t(selectionHasLockedNode ? 'Unlock objects or their parent group before deleting' : 'Undo is available during this session') }}</small></span>
           </button>
         </div>
       </BottomSheet>
 
       <BottomSheet
         :open="moveToGroupOpen && selectedAreCubes"
-        :title="selectionCount > 1 ? 'Move Cubes' : 'Move Cube'"
-        description="Groups are one level deep in this Alpha"
+        :title="locale.t(selectionCount > 1 ? 'Move Cubes' : 'Move Cube')"
+        :description="locale.t('Groups are one level deep in this Alpha')"
         @close="moveToGroupOpen = false"
       >
         <div class="move-list">
           <button type="button" :class="{ active: selectedCubes.every((cube) => !cube.parentId) }" @click="moveCubeToGroup()">
-            <AppIcon name="list-tree" :size="20" /><span><strong>Model Root</strong><small>Outside every group</small></span>
+            <AppIcon name="list-tree" :size="20" /><span><strong>{{ locale.t('Model Root') }}</strong><small>{{ locale.t('Outside every group') }}</small></span>
           </button>
           <button
             v-for="group in model.groups"
@@ -1350,28 +1528,49 @@ function showOutliner(): void {
             :class="{ active: selectedCubes.every((cube) => cube.parentId === group.id) }"
             @click="moveCubeToGroup(group.id)"
           >
-            <AppIcon name="folder" :size="20" /><span><strong>{{ group.name }}</strong><small>Move into group</small></span>
+            <AppIcon name="folder" :size="20" /><span><strong>{{ group.name }}</strong><small>{{ locale.t('Move into group') }}</small></span>
+          </button>
+        </div>
+      </BottomSheet>
+
+      <BottomSheet
+        :open="moveToFolderOpen"
+        :title="locale.t('Move to Folder')"
+        :description="locale.t('Model folders organize the Outliner only; they never transform geometry')"
+        @close="moveToFolderOpen = false"
+      >
+        <div class="move-list">
+          <button type="button" @click="moveSelectionToFolder()">
+            <AppIcon name="list-tree" :size="20" /><span><strong>{{ locale.t('Model Root') }}</strong><small>{{ locale.t('Outside every model folder') }}</small></span>
+          </button>
+          <button
+            v-for="folder in model.folders"
+            :key="folder.id"
+            type="button"
+            @click="moveSelectionToFolder(folder.id)"
+          >
+            <AppIcon name="folder-open" :size="20" /><span><strong>{{ folder.parentId ? `↳ ${folder.name}` : folder.name }}</strong><small>{{ locale.t('Organizational folder') }}</small></span>
           </button>
         </div>
       </BottomSheet>
 
       <BottomSheet
         :open="mirrorOpen"
-        title="Mirror Selection"
-        description="Mirror around the shared selection center on one axis"
+        :title="locale.t('Mirror Selection')"
+        :description="locale.t('Mirror around the shared selection center on one axis')"
         @close="mirrorOpen = false"
       >
         <div class="mirror-sheet">
           <section v-for="axis in (['x', 'y', 'z'] as const)" :key="axis">
-            <h3>{{ axis.toUpperCase() }} Axis</h3>
+            <h3>{{ axis.toUpperCase() }} {{ locale.t('Axis') }}</h3>
             <div class="mirror-actions">
               <button type="button" @click="mirrorSelection(axis, false)">
-                <strong>Mirror in Place</strong>
-                <small>Flip the current selection</small>
+                <strong>{{ locale.t('Mirror in Place') }}</strong>
+                <small>{{ locale.t('Flip the current selection') }}</small>
               </button>
               <button type="button" @click="mirrorSelection(axis, true)">
-                <strong>Duplicate + Mirror</strong>
-                <small>Keep the original and create a mirrored copy</small>
+                <strong>{{ locale.t('Duplicate + Mirror') }}</strong>
+                <small>{{ locale.t('Keep the original and create a mirrored copy') }}</small>
               </button>
             </div>
           </section>
@@ -1380,19 +1579,19 @@ function showOutliner(): void {
 
       <BottomSheet
         :open="arrangeOpen"
-        title="Align & Distribute"
-        :description="`${selectionCount} cubes selected · operations use their visible bounds`"
+        :title="locale.t('Align & Distribute')"
+        :description="`${selectionCount} ${locale.t('cubes selected · operations use their visible bounds')}`"
         @close="arrangeOpen = false"
       >
         <div class="arrange-sheet">
           <section v-for="axis in (['x', 'y', 'z'] as const)" :key="axis">
-            <h3>{{ axis.toUpperCase() }} Axis</h3>
+            <h3>{{ axis.toUpperCase() }} {{ locale.t('Axis') }}</h3>
             <div class="arrange-actions">
               <button v-for="alignment in (['min', 'center', 'max'] as const)" :key="alignment" type="button" @click="alignSelection(axis, alignment)">
-                {{ alignment === 'min' ? 'Min' : alignment === 'max' ? 'Max' : 'Center' }}
+                {{ locale.t(alignment === 'min' ? 'Min' : alignment === 'max' ? 'Max' : 'Center') }}
               </button>
               <button type="button" :disabled="selectedCubes.length < 3" @click="distributeSelection(axis)">
-                Distribute
+                {{ locale.t('Distribute') }}
               </button>
             </div>
           </section>
@@ -1401,40 +1600,62 @@ function showOutliner(): void {
 
       <BottomSheet
         :open="moreOpen"
-        title="Model Studio"
+        :title="locale.t('Model Studio')"
         :description="model.identifier"
         @close="moreOpen = false"
       >
         <div class="studio-menu">
           <button type="button" @click="showOutliner">
             <span><AppIcon name="list-tree" :size="22" /></span>
-            <span><strong>Outliner</strong><small>Select, organize, lock, isolate, and edit objects</small></span>
+            <span><strong>{{ locale.t('Outliner') }}</strong><small>{{ locale.t('Select, organize, lock, isolate, and edit objects') }}</small></span>
           </button>
-          <button type="button" @click="moreOpen = false; referencesOpen = true">
-            <span><AppIcon name="image-plus" :size="22" /></span>
-            <span><strong>References</strong><small>Viewport guides for accurate geometry</small></span>
-          </button>
-          <button type="button" @click="moreOpen = false; backgroundOpen = true">
+          <button type="button" @click="moreOpen = false; guideWorkflowOpen = true">
             <span><AppIcon name="palette" :size="22" /></span>
-            <span><strong>Editor Background</strong><small>Choose the scene atmosphere or a custom image</small></span>
+            <span><strong>{{ locale.t('Background / Guide') }}</strong><small>{{ locale.t('Environment, custom image, or viewport-aligned modeling guide') }}</small></span>
+          </button>
+          <button type="button" @click="moreOpen = false; viewsOpen = true">
+            <span><AppIcon name="camera" :size="22" /></span>
+            <span><strong>{{ locale.t('Viewport Layout') }}</strong><small>{{ locale.t('Use one or two synchronized mobile viewports') }}</small></span>
           </button>
           <button type="button" @click="moreOpen = false; settingsOpen = true">
             <span><AppIcon name="settings" :size="22" /></span>
-            <span><strong>Model Studio Settings</strong><small>Resize direction, controls, and transform space</small></span>
+            <span><strong>{{ locale.t('Model Studio Settings') }}</strong><small>{{ locale.t('Controls, precision, camera, appearance, and experiments') }}</small></span>
+          </button>
+          <button type="button" @click="openExportModel">
+            <span><AppIcon name="upload" :size="22" /></span>
+            <span><strong>{{ locale.t('Export Model') }}</strong><small>{{ locale.t('Validated portable Addons Studio .model.json') }}</small></span>
           </button>
           <button type="button" @click="saveNow">
             <span><AppIcon name="save" :size="22" /></span>
-            <span><strong>Save Now</strong><small>Autosave is already active</small></span>
+            <span><strong>{{ locale.t('Save Now') }}</strong><small>{{ locale.t('Autosave is already active') }}</small></span>
           </button>
           <button type="button" disabled>
             <span><AppIcon name="palette" :size="22" /></span>
-            <span><strong>Materials</strong><small>Coming soon</small></span>
+            <span><strong>{{ locale.t('Materials') }}</strong><small>{{ locale.t('Coming soon') }}</small></span>
           </button>
         </div>
       </BottomSheet>
 
-      <AppDialog :open="renameOpen" :title="`Rename ${renameTargetType === 'group' ? 'Group' : 'Cube'}`" @close="renameOpen = false">
-        <label class="field-label" for="rename-model-element">Object Name</label>
+      <BottomSheet
+        :open="guideWorkflowOpen"
+        :title="locale.t('Background / Guide')"
+        :description="locale.t('References guide geometry; backgrounds change only the editor atmosphere')"
+        @close="guideWorkflowOpen = false"
+      >
+        <div class="studio-menu">
+          <button type="button" @click="guideWorkflowOpen = false; referencesOpen = true">
+            <span><AppIcon name="image-plus" :size="22" /></span>
+            <span><strong>{{ locale.t('References') }}</strong><small>{{ locale.t('Viewport-aligned guides that never become geometry or block selection') }}</small></span>
+          </button>
+          <button type="button" @click="guideWorkflowOpen = false; backgroundOpen = true">
+            <span><AppIcon name="palette" :size="22" /></span>
+            <span><strong>{{ locale.t('Editor Background') }}</strong><small>{{ locale.t('Dark Studio, Sky, Night, Sunset, Snow, or a custom image') }}</small></span>
+          </button>
+        </div>
+      </BottomSheet>
+
+      <AppDialog :open="renameOpen" :title="`${locale.t('Rename')} ${locale.t(renameTargetType === 'group' ? 'Group' : 'Cube')}`" @close="renameOpen = false">
+        <label class="field-label" for="rename-model-element">{{ locale.t('Object Name') }}</label>
         <input
           id="rename-model-element"
           v-model="renameValue"
@@ -1444,44 +1665,98 @@ function showOutliner(): void {
           @keydown.enter.prevent="renameNode"
         />
         <template #actions>
-          <AppButton variant="ghost" @click="renameOpen = false">Cancel</AppButton>
-          <AppButton :disabled="!renameValue.trim()" @click="renameNode">Rename</AppButton>
+          <AppButton variant="ghost" @click="renameOpen = false">{{ locale.t('Cancel') }}</AppButton>
+          <AppButton :disabled="!renameValue.trim()" @click="renameNode">{{ locale.t('Rename') }}</AppButton>
+        </template>
+      </AppDialog>
+
+      <AppDialog
+        :open="folderDialogOpen"
+        :title="folderRenameTarget ? `${locale.t('Rename')} “${folderRenameTarget.name}”` : folderParentId ? locale.t('Create Nested Folder') : locale.t('New Model Folder')"
+        :description="locale.t(folderParentId ? 'Snapshot 3 supports one child folder per root folder.' : 'Folders organize the Outliner and never transform geometry.')"
+        @close="folderDialogOpen = false"
+      >
+        <label class="field-label" for="model-folder-name">{{ locale.t('Folder Name') }}</label>
+        <input
+          id="model-folder-name"
+          v-model="folderName"
+          class="text-input"
+          maxlength="80"
+          autocomplete="off"
+          @keydown.enter.prevent="saveModelFolder"
+        />
+        <template #actions>
+          <AppButton variant="ghost" @click="folderDialogOpen = false">{{ locale.t('Cancel') }}</AppButton>
+          <AppButton :disabled="!folderName.trim()" @click="saveModelFolder">{{ folderRenameTarget ? locale.t('Rename') : locale.t('Create') }}</AppButton>
+        </template>
+      </AppDialog>
+
+      <AppDialog
+        :open="folderDeleteOpen"
+        :title="`${locale.t('Delete')} “${folderDeleteTarget?.name ?? locale.t('folder')}”?`"
+        :description="locale.t('Its cubes, groups, and child folder will move safely to the containing folder or model root. Geometry is not deleted.')"
+        @close="folderDeleteOpen = false"
+      >
+        <template #actions>
+          <AppButton variant="ghost" @click="folderDeleteOpen = false">{{ locale.t('Cancel') }}</AppButton>
+          <AppButton variant="danger" @click="deleteModelFolder">{{ locale.t('Move Contents & Delete') }}</AppButton>
+        </template>
+      </AppDialog>
+
+      <AppDialog
+        :open="exportModelOpen"
+        :title="locale.t('Export Model')"
+        :description="locale.t('Review the portable model identity before Addons Studio validates and downloads the JSON.')"
+        @close="exportModelOpen = false"
+      >
+        <div class="dialog-fields">
+          <label class="field-label" for="export-model-name">{{ locale.t('Model name') }}</label>
+          <input id="export-model-name" v-model="exportName" class="text-input" maxlength="80" autocomplete="off" />
+          <label class="field-label" for="export-model-identifier">{{ locale.t('Identifier') }}</label>
+          <input id="export-model-identifier" v-model="exportIdentifier" class="text-input" autocomplete="off" autocapitalize="none" spellcheck="false" />
+          <label class="dialog-check"><input v-model="exportApplyIdentity" type="checkbox" />{{ locale.t("Also update this model's stored name and identifier") }}</label>
+          <p v-if="exportError" class="dialog-error" role="alert">{{ exportError }}</p>
+          <p class="dialog-note">{{ locale.t('Editor images stay in IndexedDB and are intentionally excluded from the primary JSON format.') }}</p>
+        </div>
+        <template #actions>
+          <AppButton variant="ghost" @click="exportModelOpen = false">{{ locale.t('Cancel') }}</AppButton>
+          <AppButton :loading="exportBusy" @click="exportModelJson">{{ locale.t('Export') }}</AppButton>
+        </template>
+      </AppDialog>
+
+      <AppDialog
+        :open="resetSettingsOpen"
+        :title="`${locale.t('Reset Model Studio Settings')}?`"
+        :description="locale.t('Controls, precision, camera, background preference, and Model Studio UI preferences return to defaults. Projects, geometry, and editor assets stay intact.')"
+        @close="resetSettingsOpen = false"
+      >
+        <template #actions>
+          <AppButton variant="ghost" @click="resetSettingsOpen = false">{{ locale.t('Cancel') }}</AppButton>
+          <AppButton variant="danger" @click="resetModelStudioSettings">{{ locale.t('Reset') }}</AppButton>
         </template>
       </AppDialog>
 
       <AppDialog
         :open="deleteSelectionOpen"
-        :title="`Delete ${selectionCount === 1 ? 'selected object' : `${selectionCount} selected objects`}?`"
-        description="Groups are removed safely: any unselected children stay in the model and move to the model root. Undo remains available during this editing session."
+        :title="`${locale.t('Delete')} ${selectionCount === 1 ? locale.t('selected object') : `${selectionCount} ${locale.t('selected objects')}`}?`"
+        :description="locale.t('Groups are removed safely: any unselected children stay in the model and move to the model root. Undo remains available during this editing session.')"
         @close="deleteSelectionOpen = false"
       >
         <template #actions>
-          <AppButton variant="ghost" @click="deleteSelectionOpen = false">Cancel</AppButton>
-          <AppButton variant="danger" @click="deleteSelectedNodes">Delete Selection</AppButton>
-        </template>
-      </AppDialog>
-
-      <AppDialog
-        :open="deleteGroupOpen"
-        :title="`Delete “${deleteGroupTarget?.name ?? 'group'}”?`"
-        description="The group will be removed, but every cube inside it will be moved safely to the model root."
-        @close="deleteGroupOpen = false"
-      >
-        <template #actions>
-          <AppButton variant="ghost" @click="deleteGroupOpen = false">Cancel</AppButton>
-          <AppButton variant="danger" @click="deleteGroup">Move Cubes & Delete</AppButton>
+          <AppButton variant="ghost" @click="deleteSelectionOpen = false">{{ locale.t('Cancel') }}</AppButton>
+          <AppButton variant="danger" @click="deleteSelectedNodes">{{ locale.t('Delete Selection') }}</AppButton>
         </template>
       </AppDialog>
 
       <AppDialog
         :open="deleteReferenceOpen"
-        :title="`Delete “${deleteReferenceTarget?.name ?? 'reference'}”?`"
-        description="This removes only the modeling reference. It does not delete a project texture."
+        :title="`${locale.t('Delete')} “${deleteReferenceTarget?.name ?? locale.t('reference')}”?`"
+        :description="locale.t('This removes only the modeling reference. It does not delete a project texture.')"
         @close="deleteReferenceOpen = false"
       >
         <template #actions>
-          <AppButton variant="ghost" @click="deleteReferenceOpen = false">Cancel</AppButton>
-          <AppButton variant="danger" @click="deleteReference">Delete Reference</AppButton>
+          <AppButton variant="ghost" @click="deleteReferenceOpen = false">{{ locale.t('Cancel') }}</AppButton>
+          <AppButton variant="danger" @click="deleteReference">{{ locale.t('Delete Reference') }}</AppButton>
         </template>
       </AppDialog>
     </template>

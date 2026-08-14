@@ -2,6 +2,9 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 import AppIcon from '@/components/common/AppIcon.vue'
+import { useLocaleStore } from '@/stores/locale'
+
+const locale = useLocaleStore()
 
 const online = ref(globalThis.navigator?.onLine ?? true)
 
@@ -24,7 +27,7 @@ onBeforeUnmount(() => {
   <Transition name="offline">
     <div v-if="!online" class="offline-banner" role="status">
       <AppIcon name="wifi-off" :size="17" />
-      Offline — local projects remain available
+      {{ locale.t('Offline — local projects remain available') }}
     </div>
   </Transition>
 </template>

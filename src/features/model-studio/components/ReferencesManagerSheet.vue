@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppIcon from '@/components/common/AppIcon.vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
+import { useLocaleStore } from '@/stores/locale'
 import type { StudioReferenceImage } from '@/types/model'
 
 defineProps<{
@@ -18,22 +19,25 @@ defineEmits<{
   delete: [id: string]
 }>()
 
+const locale = useLocaleStore()
+
 function viewLabel(view: StudioReferenceImage['view']): string {
-  return view.charAt(0).toUpperCase() + view.slice(1)
+  if (view === 'back') return locale.t('Back view')
+  return locale.t(view.charAt(0).toUpperCase() + view.slice(1))
 }
 </script>
 
 <template>
   <BottomSheet
     :open="open"
-    title="References"
-    description="Viewport-aligned modeling guides · never model geometry"
+    :title="locale.t('References')"
+    :description="locale.t('Viewport-aligned modeling guides · never model geometry')"
     @close="$emit('close')"
   >
     <div class="references-manager">
       <button class="add-reference" type="button" :disabled="importing" @click="$emit('add')">
         <AppIcon name="image-plus" :size="22" />
-        <span><strong>{{ importing ? 'Opening image…' : 'Add Reference' }}</strong><small>PNG or JPG · assign Front, Back, Left, Right, Top, or Bottom</small></span>
+        <span><strong>{{ locale.t(importing ? 'Opening image…' : 'Add Reference') }}</strong><small>{{ locale.t('PNG or JPG · assign Front, Back, Left, Right, Top, or Bottom') }}</small></span>
       </button>
 
       <div v-if="references.length" class="reference-list">
@@ -45,7 +49,7 @@ function viewLabel(view: StudioReferenceImage['view']): string {
             </span>
             <span>
               <strong>{{ viewLabel(reference.view) }} · {{ reference.name }}</strong>
-              <small>{{ Math.round(reference.opacity * 100) }}% opacity · {{ reference.visible ? 'Visible' : 'Hidden' }}<template v-if="!assetUrls[reference.assetId]"> · Image unavailable</template></small>
+              <small>{{ Math.round(reference.opacity * 100) }}% {{ locale.t('opacity') }} · {{ locale.t(reference.visible ? 'Visible' : 'Hidden') }}<template v-if="!assetUrls[reference.assetId]"> · {{ locale.t('Image unavailable') }}</template></small>
             </span>
           </button>
           <button type="button" :aria-label="`${reference.visible ? 'Hide' : 'Show'} ${reference.name}`" @click="$emit('toggle', reference.id)">
@@ -59,8 +63,8 @@ function viewLabel(view: StudioReferenceImage['view']): string {
 
       <div v-else class="empty-references">
         <AppIcon name="image-plus" :size="27" />
-        <strong>No references yet</strong>
-        <p>Add a front, side, or top guide and model directly over it.</p>
+        <strong>{{ locale.t('No references yet') }}</strong>
+        <p>{{ locale.t('Add a front, side, or top guide and model directly over it.') }}</p>
       </div>
     </div>
   </BottomSheet>

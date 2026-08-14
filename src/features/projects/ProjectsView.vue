@@ -12,8 +12,10 @@ import ProjectActionsController from '@/components/project/ProjectActionsControl
 import ProjectCard from '@/components/project/ProjectCard.vue'
 import ProjectFolderActionsController from '@/components/project/ProjectFolderActionsController.vue'
 import ProjectFolderCard from '@/components/project/ProjectFolderCard.vue'
+import ProjectImportController from '@/components/project/ProjectImportController.vue'
 import { toAppError } from '@/core/errors/AppError'
 import { useProjectStore } from '@/stores/projects'
+import { useLocaleStore } from '@/stores/locale'
 import { useToastStore } from '@/stores/toasts'
 import type { StudioProject, StudioProjectFolder } from '@/types/project'
 
@@ -21,6 +23,7 @@ const props = defineProps<{ folderId?: string }>()
 const router = useRouter()
 const projects = useProjectStore()
 const toasts = useToastStore()
+const locale = useLocaleStore()
 const query = ref('')
 const selectedProject = ref<StudioProject>()
 const selectedFolder = ref<StudioProjectFolder>()
@@ -30,6 +33,7 @@ const createFolderOpen = ref(false)
 const folderName = ref('')
 const folderError = ref('')
 const folderBusy = ref(false)
+const projectImport = ref<InstanceType<typeof ProjectImportController>>()
 
 const currentFolder = computed(() =>
   props.folderId ? projects.folders.find((folder) => folder.id === props.folderId) : undefined,
@@ -111,7 +115,7 @@ async function createFolder(): Promise<void> {
 <template>
   <main class="projects-view page-shell">
     <AppHeader
-      :title="currentFolder?.name ?? 'My Projects'"
+      :title="currentFolder?.name ?? locale.t('My Projects')"
       :subtitle="
         currentFolder
           ? `${visibleProjects.length} ${visibleProjects.length === 1 ? 'project' : 'projects'}`
@@ -138,18 +142,22 @@ async function createFolder(): Promise<void> {
     <div v-if="!currentFolder" class="project-toolbar">
       <AppButton variant="secondary" @click="showCreateFolder">
         <template #icon><AppIcon name="folder-plus" :size="20" /></template>
-        New Folder
+        {{ locale.t('New Folder') }}
       </AppButton>
       <AppButton @click="router.push({ name: 'create-project' })">
         <template #icon><AppIcon name="plus" :size="20" /></template>
-        New Project
+        {{ locale.t('New Project') }}
+      </AppButton>
+      <AppButton class="project-toolbar__import" variant="secondary" @click="projectImport?.openPicker()">
+        <template #icon><AppIcon name="upload" :size="20" /></template>
+        {{ locale.t('Import Project (Beta)') }}
       </AppButton>
     </div>
 
     <label class="search-field">
       <AppIcon name="search" :size="19" />
-      <span class="visually-hidden">Search projects and folders</span>
-      <input v-model="query" type="search" placeholder="Search projects and folders" />
+      <span class="visually-hidden">{{ locale.t('Search projects and folders') }}</span>
+      <input v-model="query" type="search" :placeholder="locale.t('Search projects and folders')" />
     </label>
 
     <div v-if="projects.loading" class="projects-grid" aria-label="Loading projects">
@@ -158,7 +166,7 @@ async function createFolder(): Promise<void> {
 
     <template v-else-if="visibleItemCount">
       <section v-if="filteredFolders.length" class="content-section" aria-labelledby="folders-heading">
-        <header><h2 id="folders-heading">Folders</h2><span>{{ filteredFolders.length }}</span></header>
+        <header><h2 id="folders-heading">{{ locale.t('Folders') }}</h2><span>{{ filteredFolders.length }}</span></header>
         <div class="projects-grid folders-grid">
           <ProjectFolderCard
             v-for="folder in filteredFolders"
@@ -173,7 +181,7 @@ async function createFolder(): Promise<void> {
 
       <section v-if="filteredProjects.length" class="content-section" aria-labelledby="projects-heading">
         <header>
-          <h2 id="projects-heading">{{ currentFolder ? 'Projects' : 'Root Projects' }}</h2>
+          <h2 id="projects-heading">{{ locale.t(currentFolder ? 'Projects' : 'Root Projects') }}</h2>
           <span>{{ filteredProjects.length }}</span>
         </header>
         <div class="projects-grid">
@@ -190,9 +198,9 @@ async function createFolder(): Promise<void> {
 
     <section v-else-if="query" class="empty-state">
       <span><AppIcon name="search" :size="30" /></span>
-      <h2>No matching projects or folders</h2>
-      <p>Try a different name or namespace.</p>
-      <AppButton variant="secondary" @click="query = ''">Clear search</AppButton>
+      <h2>{{ locale.t('No matching projects or folders') }}</h2>
+      <p>{{ locale.t('Try a different name or namespace.') }}</p>
+      <AppButton variant="secondary" @click="query = ''">{{ locale.t('Clear search') }}</AppButton>
     </section>
 
     <section v-else class="empty-state">
@@ -200,17 +208,17 @@ async function createFolder(): Promise<void> {
         <AppIcon v-if="currentFolder" name="folder-open" :size="35" />
         <StudioIcon v-else name="project" :size="35" />
       </span>
-      <h2>{{ currentFolder ? 'This folder is empty' : 'No projects yet' }}</h2>
+      <h2>{{ locale.t(currentFolder ? 'This folder is empty' : 'No projects yet') }}</h2>
       <p>
         {{
           currentFolder
-            ? 'Move a project here from its menu, or create a new project.'
-            : 'Projects and folders stay on this device in IndexedDB.'
+            ? locale.t('Move a project here from its menu, or create a new project.')
+            : locale.t('Projects and folders stay on this device in IndexedDB.')
         }}
       </p>
       <AppButton size="large" @click="router.push({ name: 'create-project' })">
         <template #icon><StudioIcon name="add-resource" :size="22" /></template>
-        Create Project
+        {{ locale.t('Create Project') }}
       </AppButton>
     </section>
 
@@ -225,14 +233,15 @@ async function createFolder(): Promise<void> {
       :open="folderActionsOpen"
       @close="folderActionsOpen = false"
     />
+    <ProjectImportController ref="projectImport" />
 
     <AppDialog
       :open="createFolderOpen"
-      title="New Folder"
+      :title="locale.t('New Folder')"
       description="Folders organize projects locally. Nested folders are not included yet."
       @close="createFolderOpen = false"
     >
-      <label class="field-label" for="new-folder-name">Folder Name</label>
+      <label class="field-label" for="new-folder-name">{{ locale.t('Folder Name') }}</label>
       <input
         id="new-folder-name"
         v-model="folderName"
@@ -244,8 +253,8 @@ async function createFolder(): Promise<void> {
       />
       <p v-if="folderError" class="field-error" role="alert">{{ folderError }}</p>
       <template #actions>
-        <AppButton variant="ghost" @click="createFolderOpen = false">Cancel</AppButton>
-        <AppButton :loading="folderBusy" @click="createFolder">Create Folder</AppButton>
+        <AppButton variant="ghost" @click="createFolderOpen = false">{{ locale.t('Cancel') }}</AppButton>
+        <AppButton :loading="folderBusy" @click="createFolder">{{ locale.t('Create Folder') }}</AppButton>
       </template>
     </AppDialog>
   </main>
@@ -258,6 +267,8 @@ async function createFolder(): Promise<void> {
   gap: var(--space-2);
   margin: 0.35rem 0 var(--space-3);
 }
+
+.project-toolbar__import { grid-column: 1 / -1; }
 
 .search-field {
   min-height: 3rem;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import AppBadge from '@/components/common/AppBadge.vue'
 import AppButton from '@/components/common/AppButton.vue'
@@ -10,12 +11,15 @@ import { APP_RELEASE_LABEL, APP_RELEASE_NAME, APP_VERSION } from '@/core/app/rel
 import { toAppError } from '@/core/errors/AppError'
 import { projectRepository } from '@/core/project/projectRepository'
 import { useThemeStore } from '@/stores/theme'
+import { useLocaleStore } from '@/stores/locale'
 import { useToastStore } from '@/stores/toasts'
 import type { ThemePreference } from '@/types/app'
 import type { StorageSummary } from '@/types/project'
 import { formatBytes } from '@/utils/format'
 
 const theme = useThemeStore()
+const locale = useLocaleStore()
+const router = useRouter()
 const toasts = useToastStore()
 const storage = ref<StorageSummary>({ projectCount: 0 })
 const storageLoading = ref(true)
@@ -49,8 +53,8 @@ async function clearTemporaryCache(): Promise<void> {
       type: 'success',
       message:
         count > 0
-          ? 'Temporary app cache cleared. Projects were not touched.'
-          : 'No temporary app cache needed clearing.',
+          ? locale.t('Temporary app cache cleared. Projects were not touched.')
+          : locale.t('No temporary app cache needed clearing.'),
     })
     await refreshStorage()
   } catch (error) {
@@ -68,15 +72,15 @@ onMounted(refreshStorage)
 
 <template>
   <main class="settings-view page-shell">
-    <AppHeader title="Settings" subtitle="Local preferences and storage" />
+    <AppHeader :title="locale.t('Settings')" :subtitle="locale.t('Local preferences and storage')" />
 
     <section class="settings-section" aria-labelledby="appearance-heading">
       <header>
         <span><AppIcon name="palette" :size="21" /></span>
-        <div><h2 id="appearance-heading">Appearance</h2><p>Choose how the studio looks on this device.</p></div>
+        <div><h2 id="appearance-heading">{{ locale.t('Appearance') }}</h2><p>{{ locale.t('Choose how the studio looks on this device.') }}</p></div>
       </header>
       <fieldset class="theme-options">
-        <legend class="visually-hidden">Theme</legend>
+        <legend class="visually-hidden">{{ locale.t('Theme') }}</legend>
         <label v-for="option in themes" :key="option.value">
           <input
             :checked="theme.preference === option.value"
@@ -85,35 +89,54 @@ onMounted(refreshStorage)
             :value="option.value"
             @change="theme.setPreference(option.value)"
           />
-          <span><AppIcon :name="option.icon" :size="20" />{{ option.label }}</span>
+          <span><AppIcon :name="option.icon" :size="20" />{{ locale.t(option.label) }}</span>
         </label>
       </fieldset>
+    </section>
+
+    <section class="settings-section" aria-labelledby="language-heading">
+      <header>
+        <span><AppIcon name="languages" :size="21" /></span>
+        <div><h2 id="language-heading">{{ locale.t('Language') }}</h2><p>{{ locale.t('Change Addons Studio without Safari webpage translation.') }}</p></div>
+      </header>
+      <fieldset class="theme-options language-options">
+        <legend class="visually-hidden">{{ locale.t('Language') }}</legend>
+        <label v-for="option in [{ value: 'en', label: 'English' }, { value: 'es', label: 'Español' }]" :key="option.value">
+          <input :checked="locale.language === option.value" type="radio" name="language" :value="option.value" @change="locale.setLanguage(option.value as 'en' | 'es')" />
+          <span><AppIcon name="languages" :size="20" />{{ option.label }}</span>
+        </label>
+      </fieldset>
+    </section>
+
+    <section class="settings-section settings-links" aria-label="Release and developer settings">
+      <button type="button" @click="router.push({ name: 'whats-new' })"><span><AppIcon name="sparkles" :size="21" /></span><span><strong>{{ locale.t('What’s New') }}</strong><small>{{ locale.t(APP_RELEASE_NAME) }}</small></span><AppIcon name="chevron-right" :size="20" /></button>
+      <button type="button" @click="router.push({ name: 'developer-beta' })"><span><AppIcon name="terminal" :size="21" /></span><span><strong>{{ locale.t('Developer Beta') }}</strong><small>{{ locale.t('Optional timer, routine, and local usage tools') }}</small></span><AppIcon name="chevron-right" :size="20" /></button>
     </section>
 
     <section class="settings-section" aria-labelledby="storage-heading">
       <header>
         <span><AppIcon name="database" :size="21" /></span>
-        <div><h2 id="storage-heading">Storage</h2><p>Projects stay in this browser using IndexedDB.</p></div>
+        <div><h2 id="storage-heading">{{ locale.t('Storage') }}</h2><p>{{ locale.t('Projects stay in this browser using IndexedDB.') }}</p></div>
       </header>
       <dl class="storage-stats">
         <div>
-          <dt>Local projects</dt>
+          <dt>{{ locale.t('Local projects') }}</dt>
           <dd>{{ storageLoading ? '…' : storage.projectCount }}</dd>
         </div>
         <div>
-          <dt>Approximate browser use</dt>
-          <dd>{{ storageLoading ? '…' : formatBytes(storage.usageBytes) }}</dd>
+          <dt>{{ locale.t('Approximate browser use') }}</dt>
+          <dd>{{ storageLoading ? '…' : storage.usageBytes === undefined ? locale.t('Unavailable') : formatBytes(storage.usageBytes) }}</dd>
         </div>
         <div v-if="storage.quotaBytes">
-          <dt>Storage available</dt>
+          <dt>{{ locale.t('Storage available') }}</dt>
           <dd>{{ formatBytes(storage.quotaBytes) }}</dd>
         </div>
       </dl>
       <AppButton variant="secondary" :loading="clearingCache" block @click="clearTemporaryCache">
-        Clear temporary cache
+        {{ locale.t('Clear temporary cache') }}
       </AppButton>
       <p class="storage-note">
-        This removes only Addons Studio’s reloadable app-shell cache. It does not delete projects or recovery snapshots.
+        {{ locale.t('This removes only Addons Studio’s reloadable app-shell cache. It does not delete projects or recovery snapshots.') }}
       </p>
     </section>
 
@@ -123,15 +146,15 @@ onMounted(refreshStorage)
         <div>
           <div class="about-card__title">
             <h2 id="about-heading">Addons Studio</h2>
-            <AppBadge tone="accent">{{ APP_RELEASE_LABEL }}</AppBadge>
+            <AppBadge tone="accent">{{ locale.t(APP_RELEASE_LABEL) }}</AppBadge>
           </div>
-          <p>Version {{ APP_VERSION }} · {{ APP_RELEASE_NAME }}</p>
+          <p>{{ locale.t('Version') }} {{ APP_VERSION }} · {{ locale.t(APP_RELEASE_NAME) }}</p>
         </div>
       </header>
       <ul class="about-list">
-        <li><AppIcon name="check-circle" :size="18" />Free and Open Source</li>
-        <li><AppIcon name="shield" :size="18" />MIT License</li>
-        <li><AppIcon name="monitor" :size="18" />Mobile First</li>
+        <li><AppIcon name="check-circle" :size="18" />{{ locale.t('Free and Open Source') }}</li>
+        <li><AppIcon name="shield" :size="18" />{{ locale.t('MIT License') }}</li>
+        <li><AppIcon name="monitor" :size="18" />{{ locale.t('Mobile First') }}</li>
       </ul>
       <div class="about-actions">
         <a
@@ -140,17 +163,17 @@ onMounted(refreshStorage)
           target="_blank"
           rel="noreferrer"
         >
-          <AppIcon name="github" :size="19" />View Source<AppIcon name="external-link" :size="16" />
+          <AppIcon name="github" :size="19" />{{ locale.t('View Source') }}<AppIcon name="external-link" :size="16" />
         </a>
         <a
           class="text-link"
           href="https://github.com/h9k99rpg8n-cloud/addons-studio/blob/main/THIRD_PARTY_NOTICES.md"
           target="_blank"
           rel="noreferrer"
-        >Third-party acknowledgments</a>
+        >{{ locale.t('Third-party acknowledgments') }}</a>
       </div>
       <p class="disclaimer">
-        Independent community project. Not affiliated with Mojang Studios or Microsoft.
+        {{ locale.t('Independent community project. Not affiliated with Mojang Studios or Microsoft.') }}
       </p>
     </section>
   </main>
@@ -245,6 +268,28 @@ onMounted(refreshStorage)
 .theme-options input:focus-visible + span {
   box-shadow: var(--focus-ring);
 }
+
+.language-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.settings-links { display: grid; gap: 0.4rem; }
+.settings-links > button {
+  min-height: 4rem;
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 0.55rem 0.7rem;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  text-align: left;
+}
+.settings-links > button > span:first-child { width: 2.5rem; height: 2.5rem; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--color-accent-soft); color: var(--color-accent-strong); }
+.settings-links > button > span:nth-child(2) { min-width: 0; display: grid; gap: 0.15rem; }
+.settings-links strong, .settings-links small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-links strong { font-size: 0.82rem; }
+.settings-links small { color: var(--color-text-subtle); font-size: 0.67rem; }
 
 .storage-stats {
   display: grid;

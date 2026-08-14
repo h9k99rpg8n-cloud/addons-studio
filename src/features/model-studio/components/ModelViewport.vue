@@ -16,9 +16,11 @@ import type {
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 
 import type {
+  ModelManipulationTool,
   ModelTransformTool,
   StudioCube,
   StudioCameraView,
+  StudioCameraSettings,
   StudioControlMode,
   StudioEditorBackgroundSettings,
   StudioModel,
@@ -42,6 +44,10 @@ import {
   type StudioNodeTransformSession,
 } from '@/core/model/modelHierarchy'
 import {
+  inflateHandlesForCube,
+  type StudioInflateHandle,
+} from '@/core/model/modelInflate'
+import {
   buildSelectionAxisMoveState,
   buildSelectionTranslationState,
   buildUniformResizeState,
@@ -50,12 +56,15 @@ import {
   selectionBounds,
   selectionCanTransform,
   selectionElements,
+  selectionModelingCenter,
   selectionPivot,
   type StudioSelectionTransformSession,
 } from '@/core/model/modelProductivity'
+import { useLocaleStore } from '@/stores/locale'
 
 import EditorBackgroundLayer from './EditorBackgroundLayer.vue'
 import ViewportReferences from './ViewportReferences.vue'
+import ViewportQuickControls from './ViewportQuickControls.vue'
 
 const loadThree = () => import('three')
 type ThreeModule = Awaited<ReturnType<typeof loadThree>>
@@ -64,7 +73,7 @@ type Axis = StudioAxis
 interface DragState {
   pointerId: number
   axis: Axis
-  tool: Exclude<ModelTransformTool, 'select'>
+  tool: ModelManipulationTool
   startX: number
   startY: number
   session: StudioNodeTransformSession | StudioSelectionTransformSession
@@ -115,13 +124,20 @@ const props = defineProps<{
   maximized?: boolean
   canMaximize?: boolean
   transformSnap: number | null
+  resizeSnap?: number | null
   rotationSnap: number | null
   resizeDirection: StudioResizeDirection
   controlMode: StudioControlMode
   transformSpace: StudioTransformSpace
+  cameraSettings?: StudioCameraSettings
   multiSelect?: boolean
   isolatedElementIds?: string[]
+  inflateSource?: StudioInflateHandle
+  touchRotateEnabled?: boolean
+  interactionLocked?: boolean
 }>()
+
+const locale = useLocaleStore()
 
 const emit = defineEmits<{
   selectNode: [id?: string, additive?: boolean]
@@ -131,7 +147,10 @@ const emit = defineEmits<{
   activate: []
   toggleMaximize: []
   cameraNavigated: []
+  updateView: [view: StudioCameraView]
+  updateTransformSpace: [space: StudioTransformSpace]
   error: [message: string]
+  selectInflateHandle: [handle: StudioInflateHandle]
 }>()
 
 const container = ref<HTMLDivElement>()
@@ -146,8 +165,9 @@ let controls: OrbitControls | undefined
 let raycaster: Raycaster | undefined
 let gizmoGroup: Group | undefined
 let environmentGroup: Group | undefined
+let inflateGroup: Group | undefined
 let selectionMesh: Mesh<BoxGeometry, MeshBasicMaterial> | undefined
-let cubeMaterial: MeshStandardMaterial | undefined
+let cubeMaterials: MeshStandardMaterial[] = []
 let resizeObserver: ResizeObserver | undefined
 let drag: DragState | undefined
 let directTouch: DirectTouchState | undefined
@@ -156,6 +176,8 @@ let emptyPointer: { id: number; x: number; y: number } | undefined
 
 const cubeMeshes = new Map<string, Mesh<BoxGeometry, MeshStandardMaterial>>()
 const gizmoPickers: Object3D[] = []
+const inflatePickers: Object3D[] = []
+let inflateTargetCubeId: string | undefined
 
 const axisColors: Record<Axis, number> = {
   x: 0xf05d68,
@@ -202,6 +224,12 @@ function selectedPivot(): StudioVector3 {
   return selectionPivot(props.model, selectedIds())
 }
 
+function selectedGizmoOrigin(): StudioVector3 {
+  return props.tool === 'pivot'
+    ? selectedPivot()
+    : selectionModelingCenter(props.model, selectedIds())
+}
+
 function disposeMaterial(material: Material | Material[]): void {
   if (Array.isArray(material)) material.forEach((entry) => entry.dispose())
   else material.dispose()
@@ -218,7 +246,90 @@ function disposeObject(object: Object3D): void {
 function renderScene(): void {
   if (!renderer || !scene || !camera) return
   updateGizmoScale()
+  updateInflateHandleScale()
   renderer.render(scene, camera)
+}
+
+function updateInflateHandleScale(): void {
+  if (!inflateGroup || !camera || !renderer || !inflateGroup.visible) return
+  const height = Math.max(1, renderer.domElement.clientHeight)
+  inflateGroup.children.forEach((object) => {
+    const distance = camera!.position.distanceTo(object.position)
+    const worldPerPixel = (2 * distance * Math.tan((camera!.fov * Math.PI) / 360)) / height
+    object.scale.setScalar(worldPerPixel * Number(object.userData.handlePixels ?? 6))
+  })
+}
+
+function rebuildInflateHandles(): void {
+  if (!three || !inflateGroup) return
+  for (const child of [...inflateGroup.children]) {
+    inflateGroup.remove(child)
+    disposeObject(child)
+  }
+  inflatePickers.splice(0)
+  inflateGroup.visible = props.tool === 'inflate'
+  if (!inflateGroup.visible) return
+
+  const source = props.inflateSource
+  let handleCube: StudioCube | undefined
+  if (source) {
+    const sourceCube = props.model.elements.find((cube) => cube.id === source.cubeId)
+    if (sourceCube) {
+      const marker = new three.Mesh(
+        new three.SphereGeometry(1, 12, 8),
+        new three.MeshBasicMaterial({ color: 0xf4cf58, depthTest: false }),
+      )
+      marker.position.set(source.point.x, source.point.y, source.point.z)
+      marker.userData.handlePixels = 7
+      marker.renderOrder = 30
+      inflateGroup.add(marker)
+    }
+    handleCube = props.model.elements.find((cube) => cube.id === inflateTargetCubeId)
+  } else {
+    const selected = selectedNode()
+    handleCube = selected?.type === 'cube' ? selected : undefined
+  }
+  if (!handleCube || !isNodeEffectivelyVisible(props.model, handleCube)
+    || isNodeEffectivelyLocked(props.model, handleCube)) {
+    updateInflateHandleScale()
+    return
+  }
+  for (const handle of inflateHandlesForCube(handleCube)) {
+    const visible = new three.Mesh(
+      new three.SphereGeometry(1, 10, 7),
+      new three.MeshBasicMaterial({ color: source ? 0x62c7ff : 0xf4cf58, depthTest: false }),
+    )
+    visible.position.set(handle.point.x, handle.point.y, handle.point.z)
+    visible.userData.handlePixels = handle.kind === 'corner' ? 5.5 : 4.5
+    visible.renderOrder = 29
+    inflateGroup.add(visible)
+
+    const picker = new three.Mesh(
+      new three.SphereGeometry(1, 8, 6),
+      new three.MeshBasicMaterial({ transparent: true, opacity: 0, depthTest: false }),
+    )
+    picker.position.copy(visible.position)
+    picker.userData.handlePixels = 18
+    picker.userData.inflateHandle = handle
+    picker.renderOrder = 31
+    inflateGroup.add(picker)
+    inflatePickers.push(picker)
+  }
+  updateInflateHandleScale()
+}
+
+function applyCameraSettings(): void {
+  if (!controls) return
+  const settings = props.cameraSettings ?? {
+    orbitSensitivity: 1,
+    panSensitivity: 1,
+    zoomSensitivity: 1,
+    profile: 'standard' as const,
+  }
+  const profileFactor = settings.profile === 'one-finger' ? 1.12 : settings.profile === 'two-finger' ? 0.86 : 1
+  controls.rotateSpeed = settings.orbitSensitivity * profileFactor
+  controls.panSpeed = settings.panSensitivity * (settings.profile === 'two-finger' ? 1.15 : 1)
+  controls.zoomSpeed = settings.zoomSensitivity
 }
 
 function onControlsEnd(): void {
@@ -251,8 +362,14 @@ function applyElementToMesh(element: StudioCube, mesh: Mesh): void {
     && (!isolation || isolation.has(element.id))
 }
 
+function previewMaterialIndex(id: string): number {
+  let hash = 0
+  for (let index = 0; index < id.length; index += 1) hash = (hash * 31 + id.charCodeAt(index)) | 0
+  return Math.abs(hash) % Math.max(1, cubeMaterials.length)
+}
+
 function syncCubes(): void {
-  if (!three || !scene || !cubeMaterial) return
+  if (!three || !scene || !cubeMaterials.length) return
   const currentIds = new Set(props.model.elements.map((element) => element.id))
 
   for (const [id, mesh] of cubeMeshes) {
@@ -265,7 +382,7 @@ function syncCubes(): void {
   for (const element of props.model.elements) {
     let mesh = cubeMeshes.get(element.id)
     if (!mesh) {
-      mesh = new three.Mesh(new three.BoxGeometry(1, 1, 1), cubeMaterial)
+      mesh = new three.Mesh(new three.BoxGeometry(1, 1, 1), cubeMaterials[previewMaterialIndex(element.id)]!)
       mesh.userData.elementId = element.id
       mesh.castShadow = !props.lowPower
       mesh.receiveShadow = !props.lowPower
@@ -276,6 +393,7 @@ function syncCubes(): void {
   }
 
   syncSelection()
+  rebuildInflateHandles()
   renderScene()
 }
 
@@ -303,7 +421,7 @@ function syncSelection(): void {
       three.MathUtils.degToRad(node.rotation.z),
     )
   }
-  const pivot = selectedPivot()
+  const pivot = selectedGizmoOrigin()
   gizmoGroup.position.set(pivot.x, pivot.y, pivot.z)
   gizmoGroup.rotation.set(0, 0, 0)
   const session = captureSelectionTransform(props.model, ids)
@@ -319,8 +437,9 @@ function syncSelection(): void {
     gizmoGroup.setRotationFromMatrix(basis)
   }
   const supportsSelectionTool = ids.length === 1 || props.tool === 'move'
-  const gizmosEnabled = props.controlMode !== 'tactilismos' || props.tool === 'pivot'
-  gizmoGroup.visible = props.tool !== 'select'
+  const touchOnly = props.controlMode === 'tactilismos' || props.controlMode === 'touch-gizmo'
+  const gizmosEnabled = !touchOnly || props.tool === 'pivot'
+  gizmoGroup.visible = props.tool !== 'select' && props.tool !== 'inflate'
     && supportsSelectionTool
     && gizmosEnabled
     && selectionIsTransformable()
@@ -412,9 +531,11 @@ function rebuildGizmo(): void {
 }
 
 function updateGizmoScale(): void {
-  if (!gizmoGroup || !camera || !gizmoGroup.visible) return
+  if (!gizmoGroup || !camera || !renderer || !gizmoGroup.visible) return
   const distance = camera.position.distanceTo(gizmoGroup.position)
-  const scale = Math.max(3.4, Math.min(11, distance * 0.115))
+  const worldPerPixel = (2 * distance * Math.tan((camera.fov * Math.PI) / 360))
+    / Math.max(1, renderer.domElement.clientHeight)
+  const scale = Math.max(0.8, Math.min(12, worldPerPixel * 74))
   gizmoGroup.scale.setScalar(scale)
 }
 
@@ -546,8 +667,9 @@ function cancelDirectTouch(revert = true): void {
 }
 
 function startDirectTouch(event: PointerEvent, hitElementId: string): boolean {
-  if (!three || !camera || !renderer || props.controlMode === 'gizmos') return false
+  if (!three || !camera || !renderer || props.controlMode === 'gizmos' || props.interactionLocked) return false
   if (!['move', 'scale', 'rotate'].includes(props.tool) || !selectionIsTransformable()) return false
+  if (props.tool === 'rotate' && !props.touchRotateEnabled) return false
   const ids = selectedIds()
   if (props.tool === 'rotate' && ids.length !== 1) return false
   const selectedElementIds = new Set(selectionElements(props.model, ids).map((element) => element.id))
@@ -597,10 +719,10 @@ function startDirectTouch(event: PointerEvent, hitElementId: string): boolean {
       if (controls) controls.enabled = false
       directTouch.active = true
       liveTransform.value = directTouch.mode === 'move'
-        ? 'Tactilismo · Move'
+        ? 'Touch Gizmo · Move'
         : directTouch.mode === 'scale'
-          ? 'Tactilismo · Uniform Resize'
-          : `Tactilismo · Rotate ${directTouch.rotationAxis.toUpperCase()}`
+          ? 'Touch Gizmo · Uniform Resize'
+          : `Touch Gizmo · Rotate ${directTouch.rotationAxis.toUpperCase()}`
     }, 220),
   }
   directTouch = state
@@ -613,11 +735,22 @@ function onPointerDown(event: PointerEvent): void {
     cancelDirectTouch()
     return
   }
-  if (!three || !raycaster || !camera || !renderer) return
+  if (!three || !raycaster || !camera || !renderer || props.interactionLocked) return
   emit('activate')
   setRayFromPointer(event)
 
-  if (props.tool !== 'select' && gizmoGroup?.visible) {
+  if (props.tool === 'inflate') {
+    const handleHit = raycaster.intersectObjects(inflatePickers, false)[0]
+    const handle = handleHit?.object.userData.inflateHandle as StudioInflateHandle | undefined
+    if (handle) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      emit('selectInflateHandle', handle)
+      return
+    }
+  }
+
+  if (props.tool !== 'select' && props.tool !== 'inflate' && gizmoGroup?.visible) {
     const hit = raycaster.intersectObjects(gizmoPickers, false)[0]
     const axis = hit?.object.userData.gizmoAxis as Axis | undefined
     const node = selectedNode()
@@ -627,11 +760,11 @@ function onPointerDown(event: PointerEvent): void {
       event.stopImmediatePropagation()
       renderer.domElement.setPointerCapture(event.pointerId)
       const projection = projectedAxis(axis)
-      const pivot = selectedPivot()
+      const pivot = selectedGizmoOrigin()
       drag = {
         pointerId: event.pointerId,
         axis,
-        tool: props.tool as Exclude<ModelTransformTool, 'select'>,
+        tool: props.tool as ModelManipulationTool,
         startX: event.clientX,
         startY: event.clientY,
         session,
@@ -662,6 +795,17 @@ function onPointerDown(event: PointerEvent): void {
   )[0]
   const elementId = cubeHit?.object.userData.elementId as string | undefined
   if (elementId) {
+    if (props.tool === 'inflate') {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if (props.inflateSource && elementId !== props.inflateSource.cubeId) {
+        inflateTargetCubeId = elementId
+        rebuildInflateHandles()
+      } else if (!props.inflateSource) {
+        emit('selectNode', elementId, false)
+      }
+      return
+    }
     if (startDirectTouch(event, elementId)) return
     event.preventDefault()
     event.stopImmediatePropagation()
@@ -679,7 +823,7 @@ function onPointerMove(event: PointerEvent): void {
     const dx = event.clientX - direct.startX
     const dy = event.clientY - direct.startY
     if (!direct.active) {
-      if (Math.hypot(dx, dy) > 14) {
+      if (Math.hypot(dx, dy) > 7) {
         cancelDirectTouch(false)
       }
       return
@@ -724,7 +868,7 @@ function onPointerMove(event: PointerEvent): void {
       direct.latest = buildUniformResizeState(
         direct.selectionSession,
         delta,
-        props.transformSnap,
+        props.resizeSnap ?? props.transformSnap,
         props.resizeDirection,
       )
       liveTransform.value = `Uniform Resize ${delta >= 0 ? '+' : ''}${delta.toFixed(2)}`
@@ -785,7 +929,7 @@ function onPointerMove(event: PointerEvent): void {
         currentDrag.tool,
         currentDrag.axis,
         delta,
-        props.transformSnap,
+        currentDrag.tool === 'scale' ? props.resizeSnap ?? props.transformSnap : props.transformSnap,
         props.rotationSnap,
         { resizeDirection: props.resizeDirection, transformSpace: props.transformSpace },
       )
@@ -850,7 +994,7 @@ function finishDrag(event: PointerEvent): void {
   const nodeLabel = 'node' in finished.session
     ? finished.session.node.type === 'group' ? 'group' : 'cube'
     : 'selection'
-  const labels: Record<Exclude<ModelTransformTool, 'select'>, string> = {
+  const labels: Record<ModelManipulationTool, string> = {
     move: `Move ${nodeLabel}`,
     rotate: `Rotate ${nodeLabel}`,
     scale: `Resize ${nodeLabel}`,
@@ -865,7 +1009,9 @@ function finishDrag(event: PointerEvent): void {
 
 function applyCameraView(view = props.view): void {
   if (!camera || !controls) return
-  const target = selectedIds().length ? selectedPivot() : { x: 8, y: 8, z: 8 }
+  const target = selectedIds().length
+    ? selectionModelingCenter(props.model, selectedIds())
+    : { x: 8, y: 8, z: 8 }
   controls.target.set(target.x, target.y, target.z)
   const distance = 78
   const positions: Record<StudioCameraView, [number, number, number]> = {
@@ -924,6 +1070,7 @@ async function initialize(): Promise<void> {
     controls.touches.ONE = three.TOUCH.ROTATE
     controls.touches.TWO = three.TOUCH.DOLLY_PAN
     controls.enabled = true
+    applyCameraSettings()
     controls.update()
     controls.addEventListener('change', renderScene)
     controls.addEventListener('end', onControlsEnd)
@@ -947,11 +1094,13 @@ async function initialize(): Promise<void> {
     environmentGroup.add(origin)
     scene.add(environmentGroup)
 
-    cubeMaterial = new three.MeshStandardMaterial({
-      color: 0x83a99a,
-      roughness: 0.72,
-      metalness: 0.04,
-    })
+    inflateGroup = new three.Group()
+    inflateGroup.visible = false
+    scene.add(inflateGroup)
+
+    cubeMaterials = [0x7fa69a, 0x789a8e, 0x88a59e, 0x73958a].map((color) =>
+      new threeModule.MeshStandardMaterial({ color, roughness: 0.68, metalness: 0.035 }),
+    )
     selectionMesh = new three.Mesh(
       new three.BoxGeometry(1, 1, 1),
       new three.MeshBasicMaterial({
@@ -979,6 +1128,7 @@ async function initialize(): Promise<void> {
     resizeObserver = new ResizeObserver(resize)
     resizeObserver.observe(container.value)
     syncCubes()
+    rebuildInflateHandles()
     resize()
     applyCameraView()
   } catch (error) {
@@ -1003,7 +1153,16 @@ watch(
     cancelDirectTouch()
     liveTransform.value = ''
     syncSelection()
+    rebuildInflateHandles()
   },
+)
+watch(
+  () => props.inflateSource,
+  () => {
+    inflateTargetCubeId = undefined
+    rebuildInflateHandles()
+  },
+  { deep: true },
 )
 watch(() => props.view, (view) => {
   cancelDirectTouch()
@@ -1020,6 +1179,11 @@ watch(() => props.view, (view) => {
   applyCameraView(view)
 })
 watch(() => props.lowPower, resize)
+watch(() => props.cameraSettings, () => { applyCameraSettings(); renderScene() }, { deep: true })
+watch(() => props.interactionLocked, (locked) => {
+  if (locked) cancelDirectTouch()
+  if (controls) controls.enabled = !locked
+})
 watch(
   () => props.isolatedElementIds,
   () => {
@@ -1044,12 +1208,14 @@ onBeforeUnmount(() => {
   controls?.dispose()
   for (const mesh of cubeMeshes.values()) mesh.geometry.dispose()
   cubeMeshes.clear()
-  cubeMaterial?.dispose()
+  cubeMaterials.forEach((material) => material.dispose())
+  cubeMaterials = []
   if (selectionMesh) {
     selectionMesh.geometry.dispose()
     selectionMesh.material.dispose()
   }
   if (gizmoGroup) disposeObject(gizmoGroup)
+  if (inflateGroup) disposeObject(inflateGroup)
   if (environmentGroup) disposeObject(environmentGroup)
   renderer?.dispose()
   renderer?.domElement.remove()
@@ -1068,41 +1234,31 @@ onBeforeUnmount(() => {
     <EditorBackgroundLayer
       :background="background"
       :custom-url="background.customAssetId ? assetUrls[background.customAssetId] : undefined"
-      @image-error="emit('error', 'Addons Studio could not restore this editor background from local storage.')"
+      @image-error="emit('error', locale.t('Addons Studio could not restore this editor background from local storage.'))"
     />
     <ViewportReferences
       :references="isolatedElementIds?.length ? [] : model.references"
       :view="view"
       :asset-urls="assetUrls"
-      @image-error="emit('error', 'Addons Studio could not restore this reference image from local storage.')"
+      @image-error="emit('error', locale.t('Addons Studio could not restore this reference image from local storage.'))"
     />
     <div v-if="webglError" class="viewport-error" role="alert">
-      <strong>3D unavailable</strong>
+      <strong>{{ locale.t('3D unavailable') }}</strong>
       <span>{{ webglError }}</span>
     </div>
     <div v-else class="viewport-hud" aria-hidden="true">
       <span><i class="axis-x" />X</span>
       <span><i class="axis-y" />Y</span>
       <span><i class="axis-z" />Z</span>
-      <b>{{ view }}</b>
-      <em>{{ transformSpace }} · {{ controlMode }}</em>
     </div>
-    <button
-      v-if="canMaximize"
-      type="button"
-      class="viewport-maximize"
-      :aria-label="maximized ? 'Restore split view' : 'Maximize viewport'"
-      @pointerdown.stop
-      @click.stop="emit('toggleMaximize')"
-    >
-      {{ maximized ? 'Restore' : 'Max' }}
-    </button>
+    <ViewportQuickControls :view="view" :transform-space="transformSpace" :can-maximize="canMaximize" :maximized="maximized" @update-view="emit('updateView', $event)" @update-transform-space="emit('updateTransformSpace', $event)" @toggle-maximize="emit('toggleMaximize')" />
     <div v-if="selectedIds().length" class="selection-label">
-      {{ selectedIds().length > 1 ? `${selectedIds().length} objects selected` : selectedNode()?.name }}
+      {{ selectedIds().length > 1 ? `${selectedIds().length} ${locale.t('objects selected')}` : selectedNode()?.name }}
     </div>
     <output v-if="liveTransform" class="transform-value" aria-live="polite">{{ liveTransform }}</output>
     <div v-else-if="active && !webglError" class="gesture-help">
-      Empty drag: orbit · Pinch: zoom · Two fingers: pan{{ controlMode === 'gizmos' ? '' : ' · Hold object: Tactilismo' }}
+      <template v-if="tool === 'inflate'">{{ locale.t(inflateSource ? 'Tap a target cube, then its matching point' : 'Tap a yellow source point on the selected cube') }}</template>
+      <template v-else>{{ locale.t('Empty drag: orbit · Pinch: zoom · Two fingers: pan') }}{{ controlMode === 'gizmos' ? '' : ` · ${locale.t('Hold object: Touch Gizmo')}` }}</template>
     </div>
   </div>
 </template>
@@ -1180,21 +1336,6 @@ onBeforeUnmount(() => {
   font-size: inherit;
   font-style: normal;
   text-transform: capitalize;
-}
-
-.viewport-maximize {
-  position: absolute;
-  z-index: 4;
-  top: 0.42rem;
-  right: 0.42rem;
-  min-width: 2.75rem;
-  min-height: 2.75rem;
-  border: 1px solid rgb(255 255 255 / 0.14);
-  border-radius: 0.75rem;
-  background: rgb(5 8 7 / 0.78);
-  color: #dce4df;
-  font-size: 0.62rem;
-  font-weight: 760;
 }
 
 .viewport-hud span { display: flex; align-items: center; gap: 0.2rem; }

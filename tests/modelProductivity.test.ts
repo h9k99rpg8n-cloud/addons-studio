@@ -50,8 +50,8 @@ describe('Model Studio productivity operations', () => {
     const mirrored = state.after.elements[0]!
     const center = cubeBounds(cube).center
 
-    expect(cubeBounds(mirrored).center[axis]).toBeCloseTo(-center[axis])
-    expect(mirrored.pivot).toEqual({ x: 0, y: 0, z: 0 })
+    expect(cubeBounds(mirrored).center[axis]).toBeCloseTo(center[axis])
+    expect(mirrored.pivot[axis]).toBeCloseTo(center[axis] * 2)
     if (axis === 'x') expect(mirrored.rotation).toEqual({ x: 10, y: -20, z: -30 })
     if (axis === 'y') expect(mirrored.rotation).toEqual({ x: -10, y: 20, z: -30 })
     if (axis === 'z') expect(mirrored.rotation).toEqual({ x: -10, y: -20, z: 30 })

@@ -10,6 +10,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Scope to be selected for the next development prompt; no future editor is implied as complete.
 
+## [0.0.3.6.2] - 2026-08-13
+
+### Added
+
+- Snapshot 3 Inflate precision fitting with 26 finger-friendly corner, edge, and face handles, axis/multi-axis fitting, snapping, undo/redo, and invalid-target protection.
+- Organizational Model Folders distinct from structural Groups, including one nested folder level, safe limits, create/rename/move/delete workflows, persistence, and portability metadata.
+- Focused Model Studio Settings navigation, independent Move/Resize/Rotate precision (including custom steps), camera sensitivities/profiles, experimental Touch Rotate toggle, and preferences-only reset confirmation.
+- Compact per-viewport camera-view and Global/Local/Parent quick selectors plus icon-based maximize/restore controls.
+- Canonical validated Addons Studio `.model.json` export and adapter-based import for Studio JSON and compatible Minecraft Bedrock geometry JSON.
+- Transactional versioned `.addonsstudio` project package import/export beta, manifest preview, duplicate-safe ID and namespace remapping, model/editor asset restoration, folder preservation, storage advisory, and real staged progress.
+- English/Spanish localization store and persisted language selection, with identifiers, namespaces, extensions, and JSON keys left untouched.
+- Versioned What's New/Release Notes experience and optional local-only Developer Beta timers, routine checklist, notification fallback, and opt-in foreground usage summaries.
+- Original Inflate icon and lightweight Studio Preview Material palette for clearer untextured cuboids.
+- Automated coverage for Inflate, folders and limits, language persistence, settings migration/reset, JSON adapters/integrity, and project package rollback/remapping.
+
+### Changed
+
+- Retired the user-facing Tactilismos name in favor of Touch Gizmo / Gizmo táctil while safely migrating the persisted legacy value.
+- Normal Move, Resize, and Rotate gizmos now use the geometry/selection center; Pivot mode alone displays and edits the stored animation-ready pivot.
+- Gizmos maintain an adaptive screen-space scale while retaining deliberately larger invisible touch pickers.
+- Consolidated Reference and editor-environment controls under Background / Guide and removed redundant permanent Model Studio toolbar controls.
+- Internal model schema is now version 5. Existing Alpha 0.0.3.x records normalize folders, precision, camera, experiments, and Touch Gizmo settings without resetting IndexedDB.
+
+### Preserved
+
+- References 2.0, custom backgrounds, Resize safeguards, custom Addons Studio gizmos, groups/pivots, multi-selection, productivity commands, one/two viewports, autosave, undo/redo, project folders, PWA behavior, and GitHub Pages deployment.
+- Texture Core, UV editing, materials, animation, bones, Bedrock add-on export, and the planned large Model Core refactor remain out of scope.
+
 ## [0.0.3.6.1] - 2026-08-13
 
 ### Added
@@ -149,7 +177,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - GitHub Actions workflows for CI and GitHub Pages.
 - Project, contribution, security, architecture, license, and third-party documentation.
 
-[Unreleased]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6.1...HEAD
+[Unreleased]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6.2...HEAD
+[0.0.3.6.2]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6.1...v0.0.3.6.2
 [0.0.3.6.1]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6...v0.0.3.6.1
 [0.0.3.6]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.5...v0.0.3.6
 [0.0.3.5]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3...v0.0.3.5

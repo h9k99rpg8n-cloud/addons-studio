@@ -9,11 +9,13 @@ import IconButton from '@/components/common/IconButton.vue'
 import StudioIcon from '@/components/common/StudioIcon.vue'
 import { toAppError } from '@/core/errors/AppError'
 import { modelRepository } from '@/core/model/modelRepository'
+import { importModelJson } from '@/core/model/portability/modelJsonImporter'
 import {
   createModelIdentifier,
   validateModelInput,
 } from '@/core/model/modelValidation'
 import { useProjectStore } from '@/stores/projects'
+import { useLocaleStore } from '@/stores/locale'
 import { useToastStore } from '@/stores/toasts'
 import type { StudioModel } from '@/types/model'
 
@@ -21,6 +23,7 @@ const props = defineProps<{ projectId: string }>()
 const router = useRouter()
 const projects = useProjectStore()
 const toasts = useToastStore()
+const locale = useLocaleStore()
 const models = ref<StudioModel[]>([])
 const loading = ref(true)
 const loadError = ref('')
@@ -33,6 +36,7 @@ const identifierTouched = ref(false)
 const nameError = ref('')
 const identifierError = ref('')
 const busy = ref(false)
+const importInput = ref<HTMLInputElement>()
 
 const project = computed(() =>
   projects.activeProject?.id === props.projectId
@@ -119,6 +123,43 @@ async function deleteModel(): Promise<void> {
     busy.value = false
   }
 }
+
+function openImportPicker(): void {
+  importInput.value?.click()
+}
+
+async function importJson(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  busy.value = true
+  try {
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      throw new Error('Choose a JSON model file.')
+    }
+    const result = importModelJson(await file.text(), props.projectId)
+    const imported = await modelRepository.importModel(result.model)
+    models.value.unshift(imported)
+    toasts.push({
+      type: 'success',
+      message: result.draft.warnings.length
+        ? `Geometry imported. ${result.draft.warnings.join(' ')}`
+        : 'Model imported successfully.',
+    })
+    await router.push({
+      name: 'model-studio',
+      params: { projectId: props.projectId, modelId: imported.id },
+    })
+  } catch (error) {
+    toasts.push({
+      type: 'error',
+      message: toAppError(error, 'This JSON file is not a recognized model format.').userMessage,
+    })
+  } finally {
+    input.value = ''
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -129,7 +170,7 @@ async function deleteModel(): Promise<void> {
         label="Back to project workspace"
         @click="router.push({ name: 'workspace', params: { id: projectId } })"
       />
-      <div><strong>Models</strong><small>{{ project?.name ?? 'Project' }}</small></div>
+      <div><strong>{{ locale.t('Models') }}</strong><small>{{ project?.name ?? 'Project' }}</small></div>
       <IconButton icon="plus" label="Create model" variant="surface" @click="startCreate" />
     </header>
 
@@ -139,23 +180,23 @@ async function deleteModel(): Promise<void> {
 
     <section v-else-if="loadError || !project" class="model-empty">
       <span><AppIcon name="alert-triangle" :size="30" /></span>
-      <h1>Models unavailable</h1>
+      <h1>{{ locale.t('Models unavailable') }}</h1>
       <p>{{ loadError || 'This local project could not be found.' }}</p>
-      <AppButton @click="router.replace({ name: 'projects' })">Back to Projects</AppButton>
+      <AppButton @click="router.replace({ name: 'projects' })">{{ locale.t('Back to Projects') }}</AppButton>
     </section>
 
     <div v-else class="models-content">
       <section class="models-intro">
         <span class="icon-surface tone-sky"><StudioIcon name="model" :size="31" /></span>
         <div>
-          <p class="eyebrow">Modeling Workflow</p>
-          <h1>Cube-based Bedrock modeling</h1>
-          <p>Create geometry locally with touch tools, exact numeric transforms, references, and autosave.</p>
+          <p class="eyebrow">{{ locale.t('Modeling Workflow') }}</p>
+          <h1>{{ locale.t('Cube-based Bedrock modeling') }}</h1>
+          <p>{{ locale.t('Create geometry locally with touch tools, exact numeric transforms, references, and autosave.') }}</p>
         </div>
       </section>
 
       <section v-if="models.length" class="models-section" aria-labelledby="model-list-heading">
-        <header><h2 id="model-list-heading">Project Models</h2><span>{{ models.length }}</span></header>
+        <header><h2 id="model-list-heading">{{ locale.t('Project Models') }}</h2><span>{{ models.length }}</span></header>
         <div class="models-grid">
           <article v-for="model in models" :key="model.id" class="model-card">
             <button
@@ -184,30 +225,36 @@ async function deleteModel(): Promise<void> {
 
       <section v-else class="model-empty">
         <span><StudioIcon name="model" :size="36" /></span>
-        <h2>No models yet</h2>
-        <p>Create the first model resource in this project. Nothing is exported to Minecraft yet.</p>
+        <h2>{{ locale.t('No models yet') }}</h2>
+        <p>{{ locale.t('Create the first model resource in this project. Nothing is exported to Minecraft yet.') }}</p>
         <AppButton size="large" @click="startCreate">
           <template #icon><AppIcon name="plus" :size="21" /></template>
-          Create Model
+          {{ locale.t('Create Model') }}
         </AppButton>
       </section>
     </div>
 
     <footer v-if="project && !loading" class="models-create">
+      <AppButton variant="secondary" size="large" :disabled="busy" @click="openImportPicker">
+        <template #icon><AppIcon name="download" :size="21" /></template>
+        {{ locale.t('Import JSON') }}
+      </AppButton>
       <AppButton block size="large" @click="startCreate">
         <template #icon><AppIcon name="plus" :size="21" /></template>
-        Create Model
+        {{ locale.t('Create Model') }}
       </AppButton>
     </footer>
 
+    <input ref="importInput" class="visually-hidden" type="file" accept="application/json,.json" @change="importJson" />
+
     <AppDialog
       :open="createOpen"
-      title="Create Model"
-      description="The identifier becomes the future Bedrock geometry identifier."
+      :title="locale.t('Create Model')"
+      :description="locale.t('The identifier becomes the future Bedrock geometry identifier.')"
       @close="createOpen = false"
     >
       <div class="model-form">
-        <label for="model-name">Model Name</label>
+        <label for="model-name">{{ locale.t('Model Name') }}</label>
         <input
           id="model-name"
           v-model="modelName"
@@ -219,7 +266,7 @@ async function deleteModel(): Promise<void> {
         />
         <p v-if="nameError" class="field-error" role="alert">{{ nameError }}</p>
 
-        <label for="model-identifier">Identifier</label>
+        <label for="model-identifier">{{ locale.t('Identifier') }}</label>
         <input
           id="model-identifier"
           v-model="identifier"
@@ -235,8 +282,8 @@ async function deleteModel(): Promise<void> {
         <p v-if="identifierError" class="field-error" role="alert">{{ identifierError }}</p>
       </div>
       <template #actions>
-        <AppButton variant="ghost" @click="createOpen = false">Cancel</AppButton>
-        <AppButton :loading="busy" @click="createModel">Create Model</AppButton>
+        <AppButton variant="ghost" @click="createOpen = false">{{ locale.t('Cancel') }}</AppButton>
+        <AppButton :loading="busy" @click="createModel">{{ locale.t('Create Model') }}</AppButton>
       </template>
     </AppDialog>
 
@@ -247,8 +294,8 @@ async function deleteModel(): Promise<void> {
       @close="deleteOpen = false"
     >
       <template #actions>
-        <AppButton variant="ghost" @click="deleteOpen = false">Cancel</AppButton>
-        <AppButton variant="danger" :loading="busy" @click="deleteModel">Delete Model</AppButton>
+        <AppButton variant="ghost" @click="deleteOpen = false">{{ locale.t('Cancel') }}</AppButton>
+        <AppButton variant="danger" :loading="busy" @click="deleteModel">{{ locale.t('Delete Model') }}</AppButton>
       </template>
     </AppDialog>
   </main>
@@ -459,9 +506,13 @@ async function deleteModel(): Promise<void> {
   border-top: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-app-bg) 94%, transparent);
   backdrop-filter: blur(18px);
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr);
+  gap: var(--space-2);
 }
 
 .models-create > * {
+  width: 100%;
   max-width: var(--content-max);
   margin: 0 auto;
 }

@@ -1,7 +1,8 @@
 /* eslint-disable vue/one-component-per-file -- the inline harness keeps this integration test self-contained */
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, h, reactive } from 'vue'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { createEmptyStudioModel, createStudioCube } from '@/core/model/modelFactory'
 import {
@@ -22,6 +23,8 @@ const BottomSheetStub = defineComponent({
 })
 
 describe('Model Studio numeric Resize workflow', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
   it('previews and commits one symmetric resize without applying the center offset twice', async () => {
     const model = reactive(createEmptyStudioModel('project', 'Resize', 'geometry.project.resize'))
     model.elements.push(createStudioCube(0))

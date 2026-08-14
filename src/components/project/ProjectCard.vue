@@ -4,6 +4,7 @@ import IconButton from '@/components/common/IconButton.vue'
 import StudioIcon from '@/components/common/StudioIcon.vue'
 import ProjectIcon from '@/components/project/ProjectIcon.vue'
 import type { StudioIconName } from '@/core/icons/studioIcons'
+import { useLocaleStore } from '@/stores/locale'
 import type { ProjectType, StudioProject } from '@/types/project'
 import { formatRelativeDate } from '@/utils/format'
 
@@ -15,6 +16,8 @@ defineEmits<{
   open: []
   menu: []
 }>()
+
+const locale = useLocaleStore()
 
 const projectTypeLabels: Record<ProjectType, string> = {
   addon: 'Add-on',
@@ -38,13 +41,13 @@ const projectTypeIcons: Record<ProjectType, StudioIconName> = {
           <strong>{{ project.name }}</strong>
         </span>
         <span class="project-card__namespace">{{ project.namespace }}</span>
-        <span class="project-card__meta" aria-label="Project details">
+        <span class="project-card__meta" :aria-label="locale.t('Project details')">
           <span>
             <StudioIcon :name="projectTypeIcons[project.projectType]" :size="14" />
-            {{ projectTypeLabels[project.projectType] }}
+            {{ locale.t(projectTypeLabels[project.projectType]) }}
           </span>
           <span>{{ project.targetVersion }}</span>
-          <span>Edited {{ formatRelativeDate(project.updatedAt) }}</span>
+          <span>{{ locale.t('Edited') }} {{ formatRelativeDate(project.updatedAt, Date.now(), locale.language) }}</span>
         </span>
       </span>
       <AppIcon name="chevron-right" :size="19" class="project-card__chevron" />
@@ -52,7 +55,7 @@ const projectTypeIcons: Record<ProjectType, StudioIconName> = {
     <IconButton
       class="project-card__menu"
       icon="more-vertical"
-      :label="`Project actions for ${project.name}`"
+      :label="`${locale.t('Project actions for')} ${project.name}`"
       @click="$emit('menu')"
     />
   </article>

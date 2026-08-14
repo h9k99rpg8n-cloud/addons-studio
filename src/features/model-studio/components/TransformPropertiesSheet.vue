@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import { cloneStudioCube, cloneStudioGroup } from '@/core/model/modelFactory'
+import { useLocaleStore } from '@/stores/locale'
 import type { StudioModelNode } from '@/types/model'
 import type { StudioAxis } from '@/core/model/modelHierarchy'
 
@@ -12,6 +13,7 @@ const props = defineProps<{
   open: boolean
   node?: StudioModelNode
 }>()
+const locale = useLocaleStore()
 
 const emit = defineEmits<{
   close: []
@@ -99,13 +101,13 @@ function finishAndClose(): void {
 <template>
   <BottomSheet
     :open="open && Boolean(node)"
-    :title="node?.name ?? 'Object Properties'"
-    description="Exact values update the viewport immediately"
+    :title="node?.name ?? locale.t('Object Properties')"
+    :description="locale.t('Exact values update the viewport immediately')"
     @close="finishAndClose"
   >
     <div v-if="draft" class="transform-editor">
       <label class="name-field">
-        <span>Name</span>
+        <span>{{ locale.t('Name') }}</span>
         <input
           v-model="draft.name"
           class="text-input"
@@ -118,7 +120,7 @@ function finishAndClose(): void {
       </label>
 
       <fieldset>
-        <legend>Position</legend>
+        <legend>{{ locale.t('Position') }}</legend>
         <label v-for="axis in (['x', 'y', 'z'] as const)" :key="`position-${axis}`">
           <span :class="`axis axis--${axis}`">{{ axis.toUpperCase() }}</span>
           <input
@@ -134,7 +136,7 @@ function finishAndClose(): void {
       </fieldset>
 
       <fieldset>
-        <legend>{{ draft.type === 'cube' ? 'Size' : 'Group Scale' }}</legend>
+        <legend>{{ locale.t(draft.type === 'cube' ? 'Size' : 'Group Scale') }}</legend>
         <label v-for="axis in (['x', 'y', 'z'] as const)" :key="`size-${axis}`">
           <span :class="`axis axis--${axis}`">{{ axis.toUpperCase() }}</span>
           <input
@@ -163,7 +165,7 @@ function finishAndClose(): void {
       </fieldset>
 
       <fieldset>
-        <legend>Rotation (degrees)</legend>
+        <legend>{{ locale.t('Rotation (degrees)') }}</legend>
         <label v-for="axis in (['x', 'y', 'z'] as const)" :key="`rotation-${axis}`">
           <span :class="`axis axis--${axis}`">{{ axis.toUpperCase() }}</span>
           <input

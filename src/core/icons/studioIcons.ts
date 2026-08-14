@@ -20,6 +20,7 @@ export const STUDIO_ICON_NAMES = [
   'behavior-pack',
   'layers',
   'sparkle',
+  'inflate',
 ] as const
 
 export type StudioIconName = (typeof STUDIO_ICON_NAMES)[number]
@@ -196,6 +197,14 @@ export const STUDIO_ICONS: Readonly<Record<StudioIconName, StudioIconDefinition>
       'm12 3.15 1.45 4.2 4.2 1.45-4.2 1.45L12 14.4l-1.45-4.15-4.2-1.45 4.2-1.45ZM18.1 14.5l.75 2.05 2.05.75-2.05.75-.75 2.05-.75-2.05-2.05-.75 2.05-.75ZM6 14.7l.65 1.75 1.75.65-1.75.65L6 19.5l-.65-1.75-1.75-.65 1.75-.65Z',
     ],
     accent: ['M12 3.15v11.25'],
+  },
+  inflate: {
+    fills: ['M6.2 8.2c1.8-1.75 9.8-1.75 11.6 0 1.65 1.6 1.65 6 0 7.6-1.8 1.75-9.8 1.75-11.6 0-1.65-1.6-1.65-6 0-7.6Z'],
+    base: [
+      'M6.2 8.2c1.8-1.75 9.8-1.75 11.6 0 1.65 1.6 1.65 6 0 7.6-1.8 1.75-9.8 1.75-11.6 0-1.65-1.6-1.65-6 0-7.6Z',
+      'M8.1 10.1c1.25-.85 6.55-.85 7.8 0M8.1 13.9c1.25.85 6.55.85 7.8 0',
+    ],
+    accent: ['M12 8.65v6.7M9.75 12h4.5'],
   },
 }
 

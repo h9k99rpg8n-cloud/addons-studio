@@ -2,11 +2,11 @@
 
 Addons Studio is a free and open-source, mobile-first web application for creating Minecraft Bedrock Edition add-ons. The long-term goal is a complete creative environment that works directly from a phone, tablet, or desktop browser without assuming a mouse or desktop filesystem.
 
-> **Current release:** Alpha `0.0.3.6.1` · References 2.0 & Stability Update
+> **Current release:** Alpha `0.0.3.6.2` · Snapshot 3 · Final Model Core Content Update
 
 Addons Studio is an independent community project and is not affiliated with Mojang Studios or Microsoft. Minecraft is a trademark of Microsoft Corporation.
 
-## What works in Alpha 0.0.3.6.1
+## What works in Alpha 0.0.3.6.2
 
 - First-launch welcome experience
 - Local project creation with validated namespaces
@@ -33,19 +33,26 @@ Addons Studio is an independent community project and is not affiliated with Moj
 - One- and two-viewport layouts with independent views, active-panel feedback, temporary maximize, and a lower-power secondary renderer
 - Multiple-cube creation, touch selection, duplication, finger-sized custom Move/Rotate/Resize/Pivot gizmo pickers, exact numeric transforms, and configurable snapping
 - Correct center-preserving Resize on X/Y/Z, directional positive/negative-side Resize, fixed gesture projection, and spike safeguards for predictable mobile resizing
-- Persistent Model Studio settings for Resize direction, Gizmos/Tactilismos/Hybrid controls, Global/Local/Parent transform spaces, and an English/Spanish localization foundation
-- Experimental Tactilismos for hold-to-move, radial uniform Resize, and circular single-object Rotate while empty-space orbit, pinch zoom, and two-finger pan remain available
+- Focused Model Studio Settings navigation for controls, Resize, independent Move/Resize/Rotate precision, camera sensitivity, appearance, language, experiments, and a safe preferences-only reset
+- Classic Gizmos, official Touch Gizmo, and Hybrid controls with hold-to-move, radial uniform Resize, and opt-in experimental circular Rotate while empty-space orbit, pinch zoom, and two-finger pan remain available
 - Deliberate touch multi-selection through the viewport or Outliner, with batch Move, Duplicate, Delete, visibility, locking, isolation, and Move to Group actions
 - Mirror in place and Duplicate + Mirror on X/Y/Z, bounds-based Min/Center/Max alignment, even distribution, and repeatable Duplicate Again offsets
-- One-level model groups with safe hierarchy organization, whole-group transforms, visibility, duplication, and deletion that moves children to root
+- Structural model Groups plus organizational Model Folders (one nested folder level) with explicit limits, safe deletion, autosave, JSON portability, and separate icons/behavior
 - Animation-ready cube/group pivots with direct XYZ editing, Center, Reset, and Pivot to Origin actions
 - Mobile outliner with expandable groups, selection checkboxes, explicit hidden/locked status, touch action menus, and safe access to locked objects
 - References 2.0 with multiple PNG/JPG viewport guides assigned independently to Front, Back, Left, Right, Top, or Bottom; guides support 2D position, scale, opacity, visibility, flips, and optional rotation without entering Three.js raycasting or model bounds
 - Procedural Dark Studio, Sky, Night, Sunset, and Snow editor environments plus persistent custom PNG/JPG backgrounds with Fit, Fill, Stretch, opacity, and brightness controls
 - Dedicated binary editor-asset storage, safe legacy reference migration, shared per-session object URLs across split viewports, and deterministic cleanup when references, models, or projects are deleted
 - Command-based hierarchy undo/redo plus debounced model autosave and explicit save status
+- Inflate precision fitting with mobile-sized corner, edge, and face targets; fitting adjusts independent cuboid boundaries without welding geometry
+- Per-viewport compact camera-view, transform-space, maximize, and restore controls that replace duplicated permanent toolbar actions
+- Original lightweight Studio Preview Material palette that improves untextured cuboid legibility on dark and bright editor environments
+- Full English/Spanish localization infrastructure and persisted language selection without translating identifiers, namespaces, or JSON keys
+- Validated canonical Addons Studio `.model.json` export plus adapter-based import for Studio JSON and compatible Minecraft Bedrock geometry JSON
+- Transactional `.addonsstudio` project package import/export beta with manifest preview, ID remapping, project-folder preservation, editor assets, storage checks, and staged progress
+- Versioned What’s New / Release Notes plus optional local-only Developer Beta timers, daily routine, notifications fallback, and opt-in usage-time summaries
 
-This release does **not** generate `.mcaddon` or `.mcpack` files. Model Studio remains an internal-format editor, not a complete Bedrock geometry exporter; bones, UV mapping, materials, texture painting, animation, particles, audio, code, and visual logic remain unimplemented and are not simulated. Multi-selection currently exposes shared gizmo Move rather than unsafe multi-object Rotate/Resize handles, direct Rotate Tactilismo remains experimental, and three/four viewport layouts stay deferred until mobile performance is validated. References are axial 2D guides and are intentionally hidden in Perspective and Isometric views.
+This release does **not** generate `.mcaddon` or `.mcpack` files. The new `.model.json` and `.addonsstudio` formats are Addons Studio portability formats, not Bedrock add-on builds. Bones, UV mapping, materials, texture painting, animation, particles, audio, code, and visual logic remain unimplemented and are not simulated. Multi-selection currently exposes shared gizmo Move rather than unsafe multi-object Rotate/Resize handles, Touch Rotate remains experimental, Inflate currently requires axis-aligned cubes, and three/four viewport layouts stay deferred until mobile performance is validated. References are axial 2D guides and are intentionally hidden in Perspective and Isometric views.
 
 ## Mobile-first principles
 
@@ -61,6 +68,7 @@ The product architecture deliberately avoids desktop-only filesystem assumptions
 - Vue Router with hash history for static-host reliability
 - Dexie / IndexedDB
 - Three.js, lazy-loaded only for Model Studio
+- fflate for versioned local project ZIP packages
 - `vite-plugin-pwa` / Workbox
 - Lucide for generic interface actions and an original Addons Studio SVG product-icon family
 - Vitest and fake IndexedDB for tests
@@ -100,7 +108,7 @@ The production bundle is written to `dist/`.
 
 The production build generates a web app manifest and service worker. After the app has been loaded successfully, the application shell can launch without a network connection. Project data is local and does not require a server.
 
-Clearing browser site data can remove local projects. A future release will add real import/export and recovery management; users should not treat this Alpha as their only copy of important work.
+Clearing browser site data can remove local projects. Snapshot 3 adds beta project-package import/export, but users should still verify imported copies and keep independent backups of important work.
 
 ## GitHub Pages
 

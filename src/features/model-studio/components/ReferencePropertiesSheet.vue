@@ -4,12 +4,14 @@ import { ref, watch } from 'vue'
 import AppButton from '@/components/common/AppButton.vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import { cloneStudioReference } from '@/core/model/modelFactory'
+import { useLocaleStore } from '@/stores/locale'
 import type { StudioReferenceImage } from '@/types/model'
 
 const props = defineProps<{
   open: boolean
   reference?: StudioReferenceImage
 }>()
+const locale = useLocaleStore()
 
 const emit = defineEmits<{
   close: []
@@ -77,34 +79,34 @@ function close(): void {
 <template>
   <BottomSheet
     :open="open && Boolean(reference)"
-    :title="reference?.name ?? 'Reference Image'"
-    description="Viewport guide · never model geometry or a Minecraft texture"
+    :title="reference?.name ?? locale.t('Reference Image')"
+    :description="locale.t('Viewport guide · never model geometry or a Minecraft texture')"
     @close="close"
   >
     <div v-if="draft" class="reference-editor">
       <div class="guide-note">
-        This guide appears only in its assigned standard view and never participates in selection or model bounds.
+        {{ locale.t('This guide appears only in its assigned standard view and never participates in selection or model bounds.') }}
       </div>
 
       <label class="full-field">
-        <span>Name</span>
+        <span>{{ locale.t('Name') }}</span>
         <input v-model="draft.name" maxlength="80" autocomplete="off" @focus="beginEdit('Rename reference')" @input="update" @blur="commit" />
       </label>
 
       <label class="full-field">
-        <span>Assigned View</span>
+        <span>{{ locale.t('Assigned View') }}</span>
         <select v-model="draft.view" @focus="beginEdit('Change reference view')" @change="update(); commit()">
-          <option value="front">Front</option>
-          <option value="back">Back</option>
-          <option value="left">Left</option>
-          <option value="right">Right</option>
-          <option value="top">Top</option>
-          <option value="bottom">Bottom</option>
+          <option value="front">{{ locale.t('Front') }}</option>
+          <option value="back">{{ locale.t('Back view') }}</option>
+          <option value="left">{{ locale.t('Left') }}</option>
+          <option value="right">{{ locale.t('Right') }}</option>
+          <option value="top">{{ locale.t('Top') }}</option>
+          <option value="bottom">{{ locale.t('Bottom') }}</option>
         </select>
       </label>
 
       <fieldset class="two-columns">
-        <legend>Viewport Position</legend>
+        <legend>{{ locale.t('Viewport Position') }}</legend>
         <label v-for="axis in (['x', 'y'] as const)" :key="axis">
           <span>{{ axis.toUpperCase() }}</span>
           <input v-model.number="draft.position[axis]" type="number" inputmode="decimal" step="0.5" @focus="beginEdit('Move reference')" @input="update" @blur="commit" />
@@ -112,27 +114,27 @@ function close(): void {
       </fieldset>
 
       <fieldset class="two-columns">
-        <legend>Guide Transform</legend>
-        <label><span>Scale</span><input v-model.number="draft.scale" type="number" inputmode="decimal" min="0.05" max="20" step="0.05" @focus="beginEdit('Scale reference')" @input="update" @blur="commit" /></label>
-        <label><span>Rotate</span><input v-model.number="draft.rotation" type="number" inputmode="decimal" step="1" @focus="beginEdit('Rotate reference')" @input="update" @blur="commit" /></label>
+        <legend>{{ locale.t('Guide Transform') }}</legend>
+        <label><span>{{ locale.t('Scale') }}</span><input v-model.number="draft.scale" type="number" inputmode="decimal" min="0.05" max="20" step="0.05" @focus="beginEdit('Scale reference')" @input="update" @blur="commit" /></label>
+        <label><span>{{ locale.t('Rotate') }}</span><input v-model.number="draft.rotation" type="number" inputmode="decimal" step="1" @focus="beginEdit('Rotate reference')" @input="update" @blur="commit" /></label>
       </fieldset>
 
       <label class="opacity-field">
-        <span>Opacity <strong>{{ Math.round(draft.opacity * 100) }}%</strong></span>
+        <span>{{ locale.t('Opacity') }} <strong>{{ Math.round(draft.opacity * 100) }}%</strong></span>
         <input v-model.number="draft.opacity" type="range" min="0.05" max="1" step="0.05" @pointerdown="beginEdit('Change reference opacity')" @input="update" @change="commit" />
       </label>
 
       <div class="toggle-grid">
-        <button type="button" :aria-pressed="draft.flipHorizontal" @click="draft.flipHorizontal = !draft.flipHorizontal; toggleValue('Flip reference horizontally')">Flip Horizontal</button>
-        <button type="button" :aria-pressed="draft.flipVertical" @click="draft.flipVertical = !draft.flipVertical; toggleValue('Flip reference vertically')">Flip Vertical</button>
+        <button type="button" :aria-pressed="draft.flipHorizontal" @click="draft.flipHorizontal = !draft.flipHorizontal; toggleValue('Flip reference horizontally')">{{ locale.t('Flip Horizontal') }}</button>
+        <button type="button" :aria-pressed="draft.flipVertical" @click="draft.flipVertical = !draft.flipVertical; toggleValue('Flip reference vertically')">{{ locale.t('Flip Vertical') }}</button>
       </div>
 
       <label class="visibility-field">
         <input v-model="draft.visible" type="checkbox" @change="toggleValue(draft.visible ? 'Show reference' : 'Hide reference')" />
-        <span>Show reference in its assigned viewport</span>
+        <span>{{ locale.t('Show reference in its assigned viewport') }}</span>
       </label>
 
-      <AppButton variant="danger" @click="emit('delete', draft.id)">Delete Reference</AppButton>
+      <AppButton variant="danger" @click="emit('delete', draft.id)">{{ locale.t('Delete Reference') }}</AppButton>
     </div>
   </BottomSheet>
 </template>

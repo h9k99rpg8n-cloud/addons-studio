@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import AppIcon from '@/components/common/AppIcon.vue'
+import { useLocaleStore } from '@/stores/locale'
+
+const locale = useLocaleStore()
 
 const items = [
   { name: 'home', label: 'Home', icon: 'home' },
@@ -19,7 +22,7 @@ const items = [
         class="bottom-navigation__item"
       >
         <span class="bottom-navigation__icon"><AppIcon :name="item.icon" :size="22" /></span>
-        <span>{{ item.label }}</span>
+        <span>{{ locale.t(item.label) }}</span>
       </RouterLink>
     </div>
   </nav>

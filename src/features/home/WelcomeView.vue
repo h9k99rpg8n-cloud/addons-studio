@@ -7,8 +7,10 @@ import BrandMark from '@/components/common/BrandMark.vue'
 import StudioIcon from '@/components/common/StudioIcon.vue'
 import { APP_RELEASE_LABEL } from '@/core/app/release'
 import { completeWelcome } from '@/core/storage/preferences'
+import { useLocaleStore } from '@/stores/locale'
 
 const router = useRouter()
+const locale = useLocaleStore()
 
 function continueTo(routeName: 'create-project' | 'projects'): void {
   completeWelcome()
@@ -20,29 +22,29 @@ function continueTo(routeName: 'create-project' | 'projects'): void {
   <main class="welcome-view">
     <section class="welcome-view__hero">
       <div class="welcome-view__mark"><BrandMark :size="78" /></div>
-      <p class="eyebrow">Your Bedrock workspace</p>
+      <p class="eyebrow">{{ locale.t('Your Bedrock workspace') }}</p>
       <h1>Addons Studio</h1>
       <span class="welcome-view__release">{{ APP_RELEASE_LABEL }}</span>
-      <p class="welcome-view__subtitle">Create Bedrock without limits.</p>
+      <p class="welcome-view__subtitle">{{ locale.t('Create Bedrock without limits.') }}</p>
       <p class="welcome-view__description">
-        Create Minecraft Bedrock projects directly from your mobile browser.
+        {{ locale.t('Create Minecraft Bedrock projects directly from your mobile browser.') }}
       </p>
 
       <div class="welcome-view__actions">
         <AppButton size="large" block @click="continueTo('create-project')">
           <template #icon><AppIcon name="plus" :size="21" /></template>
-          Create Project
+          {{ locale.t('Create Project') }}
         </AppButton>
         <AppButton variant="secondary" size="large" block @click="continueTo('projects')">
           <template #icon><StudioIcon name="project" :size="22" /></template>
-          Open Projects
+          {{ locale.t('Open Projects') }}
         </AppButton>
       </div>
 
       <ul class="welcome-view__proof" aria-label="Product principles">
-        <li><AppIcon name="check" :size="15" />Free</li>
-        <li><AppIcon name="github" :size="15" />Open Source</li>
-        <li><AppIcon name="monitor" :size="15" />Mobile First</li>
+        <li><AppIcon name="check" :size="15" />{{ locale.t('Free') }}</li>
+        <li><AppIcon name="github" :size="15" />{{ locale.t('Open Source') }}</li>
+        <li><AppIcon name="monitor" :size="15" />{{ locale.t('Mobile First') }}</li>
       </ul>
     </section>
   </main>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import StudioIcon from '@/components/common/StudioIcon.vue'
 import type { ResourceCategoryDefinition } from '@/features/studio/resourceCategories'
+import { useLocaleStore } from '@/stores/locale'
 
 defineProps<{
   category: ResourceCategoryDefinition
@@ -8,6 +9,7 @@ defineProps<{
 }>()
 
 defineEmits<{ open: [] }>()
+const locale = useLocaleStore()
 </script>
 
 <template>
@@ -21,10 +23,10 @@ defineEmits<{ open: [] }>()
     <span
       class="resource-card__status"
       :class="{ 'resource-card__status--available': category.status === 'available' }"
-    >{{ category.status === 'available' ? 'Open' : 'Coming soon' }}</span>
+    >{{ locale.t(category.status === 'available' ? 'Open' : 'Coming soon') }}</span>
     <span class="resource-card__content">
-      <strong>{{ category.label }}</strong>
-      <small>{{ category.description }}</small>
+      <strong>{{ locale.t(category.label) }}</strong>
+      <small>{{ locale.t(category.description) }}</small>
     </span>
     <span class="resource-card__count" :aria-label="`${count ?? 0} resources`">{{ count ?? 0 }}</span>
   </button>

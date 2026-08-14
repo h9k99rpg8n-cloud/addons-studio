@@ -1,4 +1,5 @@
 import type { CreateStudioModelInput, StudioModel, StudioVector3 } from '@/types/model'
+import { validateModelFolders } from './modelFolders'
 
 export interface ModelValidationIssue {
   field: 'name' | 'identifier'
@@ -55,6 +56,8 @@ export function validateModelInput(
 
 export function validateStoredModel(model: StudioModel): ModelValidationIssue[] {
   const issues = validateModelInput(model)
+  const folderIssue = validateModelFolders(model)[0]
+  if (folderIssue) issues.push({ field: 'name', message: folderIssue.message })
   const groupIds = new Set(model.groups.map((group) => group.id))
   const nodeIds = new Set<string>()
   for (const element of model.elements) {
@@ -63,15 +66,14 @@ export function validateStoredModel(model: StudioModel): ModelValidationIssue[] 
       break
     }
     nodeIds.add(element.id)
-    if (
-      !Number.isFinite(element.size.x)
-      || !Number.isFinite(element.size.y)
-      || !Number.isFinite(element.size.z)
-      || element.size.x <= 0
-      || element.size.y <= 0
-      || element.size.z <= 0
-    ) {
-      issues.push({ field: 'name', message: 'Cube dimensions must be greater than zero.' })
+    const invalidSizeAxis = (['x', 'y', 'z'] as const).find((axis) =>
+      !Number.isFinite(element.size[axis]) || element.size[axis] <= 0,
+    )
+    if (invalidSizeAxis) {
+      issues.push({
+        field: 'name',
+        message: `Cube “${element.name}” contains an invalid ${invalidSizeAxis.toUpperCase()} size.`,
+      })
       break
     }
     if (![element.position, element.rotation, element.pivot, element.defaultPivot].every(isFiniteVector)) {
@@ -80,6 +82,10 @@ export function validateStoredModel(model: StudioModel): ModelValidationIssue[] 
     }
     if (element.parentId && !groupIds.has(element.parentId)) {
       issues.push({ field: 'name', message: 'Every grouped cube must reference an existing group.' })
+      break
+    }
+    if (element.parentId && element.folderId) {
+      issues.push({ field: 'name', message: 'A grouped cube cannot also be placed directly in a model folder.' })
       break
     }
   }
@@ -126,6 +132,14 @@ export function validateStoredModel(model: StudioModel): ModelValidationIssue[] 
       issues.push({ field: 'name', message: 'Reference guide settings are invalid.' })
       break
     }
+  }
+  const snapping = model.editor?.snapping
+  if (!snapping || ![
+    snapping.transform,
+    snapping.resize ?? snapping.transform,
+    snapping.rotation,
+  ].every((value) => value === null || (Number.isFinite(value) && value > 0))) {
+    issues.push({ field: 'name', message: 'Model precision settings are invalid.' })
   }
   return issues
 }

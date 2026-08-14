@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppIcon from '@/components/common/AppIcon.vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
+import { useLocaleStore } from '@/stores/locale'
 import type { StudioEditorBackgroundSettings, StudioEditorBackgroundType } from '@/types/model'
 
 defineProps<{
@@ -18,6 +19,8 @@ defineEmits<{
   update: [settings: StudioEditorBackgroundSettings]
 }>()
 
+const locale = useLocaleStore()
+
 const options: readonly { id: StudioEditorBackgroundType; label: string; description: string }[] = [
   { id: 'dark-studio', label: 'Dark Studio', description: 'Neutral default environment' },
   { id: 'sky', label: 'Sky', description: 'Bright blue procedural atmosphere' },
@@ -30,7 +33,7 @@ const options: readonly { id: StudioEditorBackgroundType; label: string; descrip
 </script>
 
 <template>
-  <BottomSheet :open="open" title="Editor Background" description="Atmosphere behind the scene · never exported model content" @close="$emit('close')">
+  <BottomSheet :open="open" :title="locale.t('Editor Background')" :description="locale.t('Atmosphere behind the scene · never exported model content')" @close="$emit('close')">
     <div class="background-settings">
       <div class="background-options">
         <button
@@ -41,19 +44,19 @@ const options: readonly { id: StudioEditorBackgroundType; label: string; descrip
           @click="option.id === 'custom' && !hasCustomImage ? $emit('import') : $emit('select', option.id)"
         >
           <span class="background-swatch" :class="`background-swatch--${option.id}`"><AppIcon v-if="option.id === 'custom'" name="image-plus" :size="20" /></span>
-          <span><strong>{{ option.label }}</strong><small>{{ option.id === 'custom' && importing ? 'Opening image…' : option.description }}</small></span>
+          <span><strong>{{ locale.t(option.label) }}</strong><small>{{ locale.t(option.id === 'custom' && importing ? 'Opening image…' : option.description) }}</small></span>
           <AppIcon v-if="background.type === option.id" name="check" :size="19" />
         </button>
       </div>
 
       <section v-if="hasCustomImage" class="custom-controls">
-        <header><strong>Custom Image</strong><button type="button" @click="$emit('import')">Replace</button></header>
-        <div class="fit-options" aria-label="Custom background fit">
-          <button v-for="fit in (['fit', 'fill', 'stretch'] as const)" :key="fit" type="button" :class="{ active: background.fit === fit }" @click="$emit('update', { ...background, fit })">{{ fit }}</button>
+        <header><strong>{{ locale.t('Custom Image') }}</strong><button type="button" @click="$emit('import')">{{ locale.t('Replace') }}</button></header>
+        <div class="fit-options" :aria-label="locale.t('Custom background fit')">
+          <button v-for="fit in (['fit', 'fill', 'stretch'] as const)" :key="fit" type="button" :class="{ active: background.fit === fit }" @click="$emit('update', { ...background, fit })">{{ locale.t(fit[0]!.toUpperCase() + fit.slice(1)) }}</button>
         </div>
-        <label><span>Opacity <strong>{{ Math.round(background.opacity * 100) }}%</strong></span><input :value="background.opacity" type="range" min="0.1" max="1" step="0.05" @input="$emit('update', { ...background, opacity: Number(($event.target as HTMLInputElement).value) })" /></label>
-        <label><span>Brightness <strong>{{ Math.round(background.brightness * 100) }}%</strong></span><input :value="background.brightness" type="range" min="0.25" max="1.5" step="0.05" @input="$emit('update', { ...background, brightness: Number(($event.target as HTMLInputElement).value) })" /></label>
-        <button type="button" class="remove-custom" @click="$emit('removeCustom')">Remove Custom Image & Reset</button>
+        <label><span>{{ locale.t('Opacity') }} <strong>{{ Math.round(background.opacity * 100) }}%</strong></span><input :value="background.opacity" type="range" min="0.1" max="1" step="0.05" @input="$emit('update', { ...background, opacity: Number(($event.target as HTMLInputElement).value) })" /></label>
+        <label><span>{{ locale.t('Brightness') }} <strong>{{ Math.round(background.brightness * 100) }}%</strong></span><input :value="background.brightness" type="range" min="0.25" max="1.5" step="0.05" @input="$emit('update', { ...background, brightness: Number(($event.target as HTMLInputElement).value) })" /></label>
+        <button type="button" class="remove-custom" @click="$emit('removeCustom')">{{ locale.t('Remove Custom Image & Reset') }}</button>
       </section>
     </div>
   </BottomSheet>

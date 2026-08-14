@@ -3,22 +3,25 @@ import AppBadge from '@/components/common/AppBadge.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import AppHeader from '@/components/navigation/AppHeader.vue'
 import StudioIcon from '@/components/common/StudioIcon.vue'
+import { useLocaleStore } from '@/stores/locale'
+
+const locale = useLocaleStore()
 </script>
 
 <template>
   <main class="learn-view page-shell">
-    <AppHeader title="Learn" subtitle="Guides for Bedrock creators" />
+    <AppHeader :title="locale.t('Learn')" :subtitle="locale.t('Guides for Bedrock creators')" />
     <section class="learn-coming-soon">
       <span><AppIcon name="book-open" :size="34" /></span>
-      <AppBadge tone="accent">Coming soon</AppBadge>
-      <h2>Mobile-friendly creator guides</h2>
+      <AppBadge tone="accent">{{ locale.t('Coming soon') }}</AppBadge>
+      <h2>{{ locale.t('Mobile-friendly creator guides') }}</h2>
       <p>
-        Learn is reserved for guided Bedrock lessons. No fake tutorials or unfinished editors are included in Alpha 0.0.3.6.1.
+        {{ locale.t('Learn is reserved for guided Bedrock lessons. No fake tutorials or unfinished editors are included in Alpha 0.0.3.6.2.') }}
       </p>
       <ul>
-        <li><StudioIcon name="block" :size="19" />Contextual object workflows</li>
-        <li><StudioIcon name="material" :size="19" />Material → Texture → UV → Rendering</li>
-        <li><AppIcon name="shield" :size="18" />Validation and safe export practices</li>
+        <li><StudioIcon name="block" :size="19" />{{ locale.t('Contextual object workflows') }}</li>
+        <li><StudioIcon name="material" :size="19" />{{ locale.t('Material → Texture → UV → Rendering') }}</li>
+        <li><AppIcon name="shield" :size="18" />{{ locale.t('Validation and safe export practices') }}</li>
       </ul>
     </section>
   </main>

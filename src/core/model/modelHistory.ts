@@ -2,10 +2,16 @@ import type {
   StudioGroup,
   StudioModel,
   StudioModelElement,
+  StudioModelFolder,
   StudioReferenceImage,
 } from '@/types/model'
 
-import { cloneStudioCube, cloneStudioGroup, cloneStudioReference } from './modelFactory'
+import {
+  cloneStudioCube,
+  cloneStudioGroup,
+  cloneStudioModelFolder,
+  cloneStudioReference,
+} from './modelFactory'
 import type { StudioHierarchyState } from './modelHierarchy'
 import { normalizeSelectionIds } from './modelProductivity'
 
@@ -13,6 +19,48 @@ export interface ModelCommand {
   readonly label: string
   redo(model: StudioModel): void
   undo(model: StudioModel): void
+}
+
+export interface StudioModelStructureState {
+  elements: StudioModelElement[]
+  groups: StudioGroup[]
+  folders: StudioModelFolder[]
+}
+
+export function captureModelStructure(model: StudioModel): StudioModelStructureState {
+  return {
+    elements: model.elements.map(cloneStudioCube),
+    groups: model.groups.map(cloneStudioGroup),
+    folders: model.folders.map(cloneStudioModelFolder),
+  }
+}
+
+function replaceModelStructure(model: StudioModel, state: StudioModelStructureState): void {
+  model.elements = state.elements.map(cloneStudioCube)
+  model.groups = state.groups.map(cloneStudioGroup)
+  model.folders = state.folders.map(cloneStudioModelFolder)
+}
+
+export function updateModelStructureCommand(
+  before: StudioModelStructureState,
+  after: StudioModelStructureState,
+  label: string,
+): ModelCommand {
+  const beforeSnapshot: StudioModelStructureState = {
+    elements: before.elements.map(cloneStudioCube),
+    groups: before.groups.map(cloneStudioGroup),
+    folders: before.folders.map(cloneStudioModelFolder),
+  }
+  const afterSnapshot: StudioModelStructureState = {
+    elements: after.elements.map(cloneStudioCube),
+    groups: after.groups.map(cloneStudioGroup),
+    folders: after.folders.map(cloneStudioModelFolder),
+  }
+  return {
+    label,
+    redo: (model) => replaceModelStructure(model, afterSnapshot),
+    undo: (model) => replaceModelStructure(model, beforeSnapshot),
+  }
 }
 
 function cloneElement(element: StudioModelElement): StudioModelElement {
@@ -250,6 +298,7 @@ export function deleteGroupCommand(
   const rootChildren = beforeChildren.map((element) => ({
     ...cloneStudioCube(element),
     parentId: undefined,
+    folderId: groupSnapshot.folderId,
   }))
   return {
     label: `Delete ${groupSnapshot.name}`,

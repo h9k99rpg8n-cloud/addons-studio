@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the Alpha `0.0.3.6.1` mobile foundation, project organization, and current Model Studio workflow. It defines boundaries for future work; it is not a claim that a complete Bedrock modeling or export engine already exists.
+This document describes the Alpha `0.0.3.6.2` Snapshot 3 mobile foundation, project organization, and first-generation Model Core workflow. It defines boundaries for future work; it is not a claim that Texture Core or a complete Bedrock add-on export engine exists.
 
 ## Application layers
 
@@ -14,7 +14,9 @@ This document describes the Alpha `0.0.3.6.1` mobile foundation, project organiz
 | `src/core/icons` | Typed, original Addons Studio product-icon registry |
 | `src/features` | Lazy-loaded route-level product features |
 | `src/core/project` | Project rules, version registry, persistence scheduling, and resource templates |
-| `src/core/model` | Internal model factory, transform math, hierarchy/productivity operations, validation, repository, debounced persistence, and command history |
+| `src/core/model` | Internal model factory, transform math, hierarchy/productivity/Inflate/folder operations, JSON adapters, validation, repository, debounced persistence, and command history |
+| `src/core/i18n` | English-source / Spanish message catalog that never rewrites technical IDs |
+| `src/core/productivity` | Opt-in local-only Developer Beta timers, routine, and usage records |
 | `src/features/model-studio` | Mobile model list, 3D viewport, outliner, and touch properties sheets |
 | `src/core/storage` | Dexie schema and lightweight preferences |
 | `src/core/history` | Recovery-snapshot service boundary |
@@ -39,21 +41,29 @@ This document describes the Alpha `0.0.3.6.1` mobile foundation, project organiz
 
 Project creation, duplication, and deletion use Dexie transactions. Deleting a project also removes its snapshots, models, reference blobs, and custom backgrounds in the same logical operation. Duplicating a project creates independent stable IDs for copied models, elements, references, background links, and blobs. Deleting a folder never deletes projects: every contained project moves to the root list in the same transaction before the folder is removed.
 
-Project metadata autosave is debounced to 650 ms after a meaningful change. Successfully saved projects become eligible for a recovery checkpoint approximately every five minutes; at most 15 snapshots are retained per project. Model records use an independent debounced service and flush on page hide or editor exit. Recovery snapshots do not yet include full model history; the persistent model record is the Alpha 0.0.3.6.1 recovery boundary.
+Project metadata autosave is debounced to 650 ms after a meaningful change. Successfully saved projects become eligible for a recovery checkpoint approximately every five minutes; at most 15 snapshots are retained per project. Model records use an independent debounced service and flush on page hide or editor exit. Recovery snapshots do not yet include full model history; the persistent model record is the Alpha 0.0.3.6.2 recovery boundary.
 
 The current image importer crops and resizes project icons to 256 × 256 in the browser before storing them. Large future binary assets must use dedicated records and thumbnails rather than being copied into project metadata.
 
 ## Model Studio foundation
 
-`StudioModel` is the editor source of truth. Schema version 4 preserves stable cube IDs, absolute model-space transforms, visibility and lock state, future-compatible metadata, one-level group relationships, cube/group pivots, snapping, viewport preferences, Resize direction, control mode, transform space, the future language preference, References 2.0 metadata, and editor-background preferences. Earlier Alpha records normalize on read with centered pivots, empty groups where absent, unlocked model nodes, migrated axial reference guides, and safe default settings; this does not require an IndexedDB reset. Editor gestures never modify raw Minecraft geometry JSON. A later converter will own the explicit `StudioModel → Bedrock Geometry JSON` boundary.
+`StudioModel` is the editor source of truth. Schema version 5 preserves stable cube IDs, absolute model-space transforms, visibility and lock state, future-compatible metadata, one-level structural Groups, organizational Model Folders, cube/group pivots, independent precision, camera preferences, Resize direction, Touch Gizmo mode, transform space, language, References 2.0 metadata, and editor-background preferences. Earlier Alpha records normalize on read with centered pivots, empty groups/folders where absent, migrated axial reference guides, legacy Tactilismos → Touch Gizmo values, and safe default settings; this does not require an IndexedDB reset. Editor gestures never use Three.js as a file format.
 
-Three.js and `OrbitControls` are dynamically imported only on the Model Studio route. Camera controls remain enabled in the normal modeling workflow: an empty-space drag orbits, pinch zooms, and two fingers pan. A capture-phase picker prevents camera movement when a cube, custom gizmo handle, or active Tactilismo owns the gesture. Tactilismos use a deliberate hold before direct screen-plane Move, radial uniform Resize, or experimental circular single-object Rotate starts; navigation movement or a second finger cancels a pending direct transform. Gizmo and Hybrid modes retain the original custom controls. Perspective, isometric, and six axial views reposition the camera around the current target. One- and two-viewport layouts are implemented; the secondary viewport reduces device-pixel ratio and rendering features, and either panel can be temporarily maximized. Three/four layouts are not exposed as fake actions.
+Three.js and `OrbitControls` are dynamically imported only on the Model Studio route. Camera controls remain enabled in the normal modeling workflow: an empty-space drag orbits, pinch zooms, and two fingers pan. A capture-phase picker prevents camera movement when a cube, custom gizmo handle, Inflate point, or active Touch Gizmo owns the gesture. Touch Gizmo uses a deliberate hold before direct screen-plane Move, radial uniform Resize, or opt-in experimental circular single-object Rotate starts; navigation movement or a second finger cancels a pending direct transform. Classic Gizmos and Hybrid retain the original custom controls. Compact overlays select the active transform space and each viewport's camera independently. One- and two-viewport layouts are implemented; the secondary viewport reduces device-pixel ratio and rendering features, and either panel can be temporarily maximized.
+
+Normal modeling gizmos use a geometry/selection center so a distant custom pivot does not make editing awkward. Pivot mode alone presents the persisted anchor. Inflate exposes original visible points backed by much larger invisible raycast targets and changes only the selected cube's required boundaries; cuboids remain independent. Snapshot 3 intentionally limits Inflate to axis-aligned cubes rather than pretending rotated fitting is reliable.
 
 The viewport renders on demand, caps device pixel ratio, responds to rotation/resizing, and disposes geometries, materials, shared editor-image URLs, controls, observers, and pointer listeners on teardown. Cube picking and original Addons Studio transform handles use raycasting. Visible handles stay precise while transparent picker geometry is deliberately thicker for fingers. Axis projection and world-per-pixel sensitivity are frozen at gesture start, near-camera-axis sensitivity is bounded, discontinuous pointer coordinates are rejected, and non-finite or implausible world deltas never reach model data. The world-origin sphere remains removed; the mathematical origin, origin axes, and green grid remain.
 
 The hierarchy service captures only the selected node plus affected children. Cubes remain in absolute model space for backward compatibility. Normal Resize changes dimensions around the visual center; Positive/Negative Side modes move the center by half the size delta along the active Global/Local/Parent axis. Custom pivots are anchors and never become geometry. Group move/rotate/resize operations apply their delta to every child around the shared group pivot, and transform-space rotations use quaternion composition before returning stable XYZ Euler values.
 
-The productivity service normalizes deliberate touch multi-selection, computes rotated cube bounds, and produces compact before/after states for batch Move, Mirror, Align, Distribute, visibility, and locking. Duplicate and Duplicate + Mirror generate new IDs and remap group membership; Duplicate Again applies the last post-duplicate translation to the next copy. Isolation is viewport-only state and never overwrites intended model visibility. The command history treats each batch operation as one undoable command rather than storing entire project copies.
+The productivity service normalizes deliberate touch multi-selection, computes rotated cube bounds, and produces compact before/after states for batch Move, Mirror, Align, Distribute, visibility, and locking. Duplicate and Duplicate + Mirror generate new IDs and remap group membership; Duplicate Again applies the last post-duplicate translation to the next copy. Isolation is viewport-only state and never overwrites intended model visibility. Structural Groups transform children; Model Folders contain editor metadata only and never transform geometry. The command history treats each batch operation as one undoable command rather than storing entire project copies.
+
+## Portability boundaries
+
+Canonical `.model.json` files contain a versioned Addons Studio model document: name, identifier, cubes, structural groups, organizational folders, transforms, pivots, hierarchy references, and safe metadata. Binary references and backgrounds are deliberately excluded from primary JSON and declared under an editor omission field. Import uses a detector and explicit adapters (`studioJsonAdapter`, `bedrockGeometryAdapter`) before conversion and validation; unrelated JSON is rejected.
+
+The beta `.addonsstudio` project format is a versioned ZIP container built with fflate. It contains `manifest.json`, canonical models, separate editor records, and binary editor assets. Import stages and validates the complete package, remaps every internal project/model/node/folder/reference/asset ID, checks storage when available, and commits through one Dexie transaction. A collision never silently overwrites an existing project.
 
 References 2.0 are editor-only, viewport-aligned DOM guides and are never project textures or Three.js scene geometry. Each guide is assigned to Front, Back, Left, Right, Top, or Bottom and supports 2D position, uniform scale, opacity, visibility, horizontal/vertical flips, rename, and optional rotation. The layer has no pointer events, never enters model raycasts or bounds, and each split viewport resolves only its own assigned guides. Legacy 3D reference metadata maps conservatively to the closest axial view and 2D values.
 
@@ -81,7 +91,7 @@ packages/
   addon-builder/
 ```
 
-Those package-level engines do not exist in Alpha `0.0.3.6.1`. The current in-app Model Studio foundation is intentionally small and can later move behind a `model-engine` boundary without changing stored editor concepts.
+Those package-level engines do not exist in Alpha `0.0.3.6.2`. The current in-app Model Studio foundation is intentionally ready for the planned 0.0.3.6.3 modularization without changing stored editor concepts.
 
 ## Visual system
 

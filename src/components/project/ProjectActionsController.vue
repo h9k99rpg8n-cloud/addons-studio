@@ -6,9 +6,15 @@ import AppDialog from '@/components/common/AppDialog.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import { toAppError } from '@/core/errors/AppError'
+import {
+  projectPackageService,
+  type ProjectPackageStage,
+} from '@/core/project/projectPackageService'
 import { useProjectStore } from '@/stores/projects'
+import { useLocaleStore } from '@/stores/locale'
 import { useToastStore } from '@/stores/toasts'
 import type { StudioProject } from '@/types/project'
+import { downloadBlob } from '@/utils/download'
 
 const props = defineProps<{
   project?: StudioProject
@@ -23,12 +29,25 @@ const emit = defineEmits<{
 
 const projects = useProjectStore()
 const toasts = useToastStore()
+const locale = useLocaleStore()
 const renameOpen = ref(false)
 const deleteOpen = ref(false)
 const moveOpen = ref(false)
 const renameValue = ref('')
 const renameError = ref('')
 const busy = ref(false)
+const exportProgressOpen = ref(false)
+const exportStage = ref<ProjectPackageStage>('reading')
+const exportStatus = ref<'working' | 'done' | 'error'>('working')
+const exportError = ref('')
+
+const packageStageLabels: Readonly<Record<ProjectPackageStage, string>> = {
+  reading: 'Reading project',
+  validating: 'Validating models',
+  models: 'Packaging models',
+  assets: 'Packaging editor assets',
+  finishing: 'Creating package',
+}
 
 watch(
   () => props.project,
@@ -114,6 +133,28 @@ async function duplicate(): Promise<void> {
   }
 }
 
+async function exportProject(): Promise<void> {
+  if (!props.project) return
+  emit('close')
+  exportProgressOpen.value = true
+  exportStatus.value = 'working'
+  exportStage.value = 'reading'
+  exportError.value = ''
+  try {
+    await projects.flushPendingSaves()
+    const result = await projectPackageService.exportProject(
+      props.project.id,
+      (stage) => { exportStage.value = stage },
+    )
+    downloadBlob(result.blob, result.filename)
+    exportStatus.value = 'done'
+    toasts.push({ type: 'success', message: 'Project package exported' })
+  } catch (error) {
+    exportStatus.value = 'error'
+    exportError.value = toAppError(error, 'Addons Studio could not export this project.').userMessage
+  }
+}
+
 async function remove(): Promise<void> {
   if (!props.project) return
   busy.value = true
@@ -137,33 +178,52 @@ async function remove(): Promise<void> {
 <template>
   <BottomSheet
     :open="open && Boolean(project)"
-    :title="project?.name ?? 'Project actions'"
-    description="Manage this local project"
+    :title="project?.name ?? locale.t('Project actions')"
+    :description="locale.t('Manage this local project')"
     @close="$emit('close')"
   >
     <div class="action-list">
       <button type="button" @click="chooseRename">
         <span><AppIcon name="pencil" :size="21" /></span>
-        <span><strong>Rename</strong><small>Change the project name</small></span>
+        <span><strong>{{ locale.t('Rename') }}</strong><small>{{ locale.t('Change the project name') }}</small></span>
       </button>
       <button type="button" :disabled="busy" @click="duplicate">
         <span><AppIcon name="copy" :size="21" /></span>
-        <span><strong>Duplicate</strong><small>Create an independent local copy</small></span>
+        <span><strong>{{ locale.t('Duplicate') }}</strong><small>{{ locale.t('Create an independent local copy') }}</small></span>
       </button>
       <button type="button" :disabled="busy" @click="chooseMove">
         <span><AppIcon name="folder-output" :size="21" /></span>
-        <span><strong>Move to Folder</strong><small>Choose a folder or the root list</small></span>
+        <span><strong>{{ locale.t('Move to Folder') }}</strong><small>{{ locale.t('Choose a folder or the root list') }}</small></span>
+      </button>
+      <button type="button" :disabled="busy" @click="exportProject">
+        <span><AppIcon name="download" :size="21" /></span>
+        <span><strong>{{ locale.t('Export Project (Beta)') }}</strong><small>{{ locale.t('Versioned package with models and editor assets') }}</small></span>
       </button>
       <button type="button" class="action-list__danger" @click="chooseDelete">
         <span><AppIcon name="trash" :size="21" /></span>
-        <span><strong>Delete</strong><small>Remove the project from this device</small></span>
+        <span><strong>{{ locale.t('Delete') }}</strong><small>{{ locale.t('Remove the project from this device') }}</small></span>
       </button>
     </div>
   </BottomSheet>
 
   <BottomSheet
+    :open="exportProgressOpen"
+    :title="locale.t(exportStatus === 'working' ? 'Exporting Project' : exportStatus === 'done' ? 'Project exported' : 'Export stopped safely')"
+    :description="exportStatus === 'working' ? packageStageLabels[exportStage] : undefined"
+    @close="exportStatus === 'working' ? undefined : (exportProgressOpen = false)"
+  >
+    <div class="export-progress" :class="`export-progress--${exportStatus}`" aria-live="polite">
+      <span v-if="exportStatus === 'working'" class="export-spinner" />
+      <span v-else><AppIcon :name="exportStatus === 'done' ? 'check' : 'alert-triangle'" :size="29" /></span>
+      <strong>{{ exportStatus === 'working' ? packageStageLabels[exportStage] : exportStatus === 'done' ? `${project?.name ?? 'Project'} is ready` : 'No project data was changed' }}</strong>
+      <p>{{ exportStatus === 'working' ? 'Keep Addons Studio open while the package is prepared.' : exportStatus === 'done' ? 'The .addonsstudio download contains a validated, restorable local project package.' : exportError }}</p>
+      <AppButton v-if="exportStatus !== 'working'" block variant="secondary" @click="exportProgressOpen = false">{{ locale.t('Close') }}</AppButton>
+    </div>
+  </BottomSheet>
+
+  <BottomSheet
     :open="moveOpen && Boolean(project)"
-    title="Move Project"
+    :title="locale.t('Move Project')"
     :description="`Choose where to keep “${project?.name ?? 'project'}”.`"
     @close="moveOpen = false"
   >
@@ -175,7 +235,7 @@ async function remove(): Promise<void> {
         @click="move(undefined)"
       >
         <span><AppIcon name="layers" :size="21" /></span>
-        <span><strong>My Projects</strong><small>Root project list</small></span>
+        <span><strong>{{ locale.t('My Projects') }}</strong><small>Root project list</small></span>
         <AppIcon v-if="!project?.folderId" name="check" :size="19" />
       </button>
       <button
@@ -212,8 +272,8 @@ async function remove(): Promise<void> {
     />
     <p v-if="renameError" class="field-error" role="alert">{{ renameError }}</p>
     <template #actions>
-      <AppButton variant="ghost" @click="renameOpen = false">Cancel</AppButton>
-      <AppButton :loading="busy" @click="rename">Rename</AppButton>
+      <AppButton variant="ghost" @click="renameOpen = false">{{ locale.t('Cancel') }}</AppButton>
+      <AppButton :loading="busy" @click="rename">{{ locale.t('Rename') }}</AppButton>
     </template>
   </AppDialog>
 
@@ -228,8 +288,8 @@ async function remove(): Promise<void> {
       <span>This action only affects this device.</span>
     </div>
     <template #actions>
-      <AppButton variant="ghost" @click="deleteOpen = false">Cancel</AppButton>
-      <AppButton variant="danger" :loading="busy" @click="remove">Delete</AppButton>
+      <AppButton variant="ghost" @click="deleteOpen = false">{{ locale.t('Cancel') }}</AppButton>
+      <AppButton variant="danger" :loading="busy" @click="remove">{{ locale.t('Delete') }}</AppButton>
     </template>
   </AppDialog>
 </template>
@@ -305,6 +365,13 @@ async function remove(): Promise<void> {
   display: grid;
   gap: 0.45rem;
 }
+
+.export-progress { display: grid; justify-items: center; gap: var(--space-3); padding: var(--space-2) 0; text-align: center; }
+.export-progress > span { width: 4rem; height: 4rem; display: grid; place-items: center; border-radius: var(--radius-xl); background: var(--color-accent-soft); color: var(--color-accent-strong); }
+.export-progress p { max-width: 28rem; margin: 0; color: var(--color-text-muted); font-size: 0.8rem; line-height: 1.5; }
+.export-progress--error > span { background: var(--color-danger-soft); color: var(--color-danger); }
+.export-spinner { width: 1.5rem !important; height: 1.5rem !important; border: 3px solid currentColor; border-right-color: transparent; border-radius: 50% !important; background: transparent !important; animation: spin 0.75s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .move-list button {
   min-height: 4rem;

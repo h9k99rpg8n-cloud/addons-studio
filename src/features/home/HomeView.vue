@@ -2,7 +2,6 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import AppBadge from '@/components/common/AppBadge.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import BrandMark from '@/components/common/BrandMark.vue'
 import IconButton from '@/components/common/IconButton.vue'
@@ -10,17 +9,21 @@ import StudioIcon from '@/components/common/StudioIcon.vue'
 import AppHeader from '@/components/navigation/AppHeader.vue'
 import ProjectActionsController from '@/components/project/ProjectActionsController.vue'
 import ProjectCard from '@/components/project/ProjectCard.vue'
+import ProjectImportController from '@/components/project/ProjectImportController.vue'
 import { toAppError } from '@/core/errors/AppError'
 import { APP_RELEASE_LABEL } from '@/core/app/release'
 import { useProjectStore } from '@/stores/projects'
+import { useLocaleStore } from '@/stores/locale'
 import { useToastStore } from '@/stores/toasts'
 import type { StudioProject } from '@/types/project'
 
 const router = useRouter()
 const projects = useProjectStore()
 const toasts = useToastStore()
+const locale = useLocaleStore()
 const selectedProject = ref<StudioProject>()
 const actionsOpen = ref(false)
+const projectImport = ref<InstanceType<typeof ProjectImportController>>()
 
 onMounted(async () => {
   try {
@@ -42,12 +45,6 @@ function openActions(project: StudioProject): void {
   actionsOpen.value = true
 }
 
-function importPlaceholder(): void {
-  toasts.push({
-    type: 'info',
-    message: 'Project import is coming in a future Addons Studio update.',
-  })
-}
 </script>
 
 <template>
@@ -68,11 +65,11 @@ function importPlaceholder(): void {
 
     <section class="home-hero" aria-labelledby="home-heading">
       <div class="home-hero__copy">
-        <p class="eyebrow">Create Bedrock without limits</p>
-        <h2 id="home-heading">Your ideas, built locally.</h2>
-        <p>Start a Bedrock project or continue creating right where you left off.</p>
+        <p class="eyebrow">{{ locale.t('Create Bedrock without limits') }}</p>
+        <h2 id="home-heading">{{ locale.t('Your ideas, built locally.') }}</h2>
+        <p>{{ locale.t('Start a Bedrock project or continue creating right where you left off.') }}</p>
         <span class="home-hero__status">
-          <AppIcon name="shield" :size="16" /> Private by default · Saved on this device
+          <AppIcon name="shield" :size="16" /> {{ locale.t('Private by default · Saved on this device') }}
         </span>
       </div>
       <span class="home-hero__art" aria-hidden="true">
@@ -85,33 +82,33 @@ function importPlaceholder(): void {
         <span class="action-card__icon action-card__icon--product">
           <StudioIcon name="add-resource" :size="29" />
         </span>
-        <span><strong>New Project</strong><small>Build from a clean, local foundation</small></span>
+        <span><strong>{{ locale.t('New Project') }}</strong><small>{{ locale.t('Build from a clean, local foundation') }}</small></span>
         <AppIcon name="chevron-right" :size="20" />
       </RouterLink>
       <RouterLink :to="{ name: 'projects' }" class="action-card">
         <span class="action-card__icon action-card__icon--product">
           <StudioIcon name="project" :size="27" />
         </span>
-        <span><strong>My Projects</strong><small>{{ projects.projects.length }} stored locally</small></span>
+        <span><strong>{{ locale.t('My Projects') }}</strong><small>{{ locale.t('{count} stored locally', { count: projects.projects.length }) }}</small></span>
         <AppIcon name="chevron-right" :size="20" />
       </RouterLink>
-      <button type="button" class="action-card" @click="importPlaceholder">
+      <button type="button" class="action-card" @click="projectImport?.openPicker()">
         <span class="action-card__icon"><AppIcon name="upload" :size="24" /></span>
         <span>
-          <strong>Import Project <AppBadge>Coming soon</AppBadge></strong>
-          <small>Import is not implemented in Alpha 0.0.3.6.1</small>
+          <strong>{{ locale.t('Import Project (Beta)') }}</strong>
+          <small>{{ locale.t('Restore a validated Addons Studio project package') }}</small>
         </span>
-        <AppIcon name="info" :size="19" />
+        <AppIcon name="chevron-right" :size="19" />
       </button>
     </section>
 
     <section class="recent-projects" aria-labelledby="recent-heading">
       <header class="section-heading">
         <div>
-          <p class="eyebrow">On this device</p>
-          <h2 id="recent-heading">Recent projects</h2>
+          <p class="eyebrow">{{ locale.t('On this device') }}</p>
+          <h2 id="recent-heading">{{ locale.t('Recent projects') }}</h2>
         </div>
-        <RouterLink v-if="projects.projects.length" :to="{ name: 'projects' }">View all</RouterLink>
+        <RouterLink v-if="projects.projects.length" :to="{ name: 'projects' }">{{ locale.t('View all') }}</RouterLink>
       </header>
 
       <div v-if="projects.loading" class="project-skeletons" aria-label="Loading projects">
@@ -131,15 +128,15 @@ function importPlaceholder(): void {
       <div v-else class="empty-card">
         <span><StudioIcon name="workspace" :size="29" /></span>
         <div>
-          <strong>Your workspace is clean</strong>
-          <p>Create your first project. No demo data will be added behind your back.</p>
+          <strong>{{ locale.t('Your workspace is clean') }}</strong>
+          <p>{{ locale.t('Create your first project. No demo data will be added behind your back.') }}</p>
         </div>
       </div>
     </section>
 
     <aside class="home-tip">
       <span><StudioIcon name="material" :size="23" /></span>
-      <p><strong>Model Studio has begun.</strong> Build cube geometry with touch controls while Materials, logic, and advanced editors remain clearly marked for future releases.</p>
+      <p><strong>{{ locale.t('Model Studio has begun.') }}</strong> {{ locale.t('Build cube geometry with touch controls while Materials, logic, and advanced editors remain clearly marked for future releases.') }}</p>
     </aside>
 
     <ProjectActionsController
@@ -147,6 +144,7 @@ function importPlaceholder(): void {
       :open="actionsOpen"
       @close="actionsOpen = false"
     />
+    <ProjectImportController ref="projectImport" />
   </main>
 </template>
 

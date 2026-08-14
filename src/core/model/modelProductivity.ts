@@ -137,6 +137,10 @@ export function selectionPivot(model: StudioModel, ids: readonly string[]): Stud
   return selectionBounds(model, normalized)?.center ?? { ...ZERO }
 }
 
+export function selectionModelingCenter(model: StudioModel, ids: readonly string[]): StudioVector3 {
+  return selectionBounds(model, ids)?.center ?? { ...ZERO }
+}
+
 export function captureSelectionTransform(
   model: StudioModel,
   ids: readonly string[],
@@ -153,7 +157,7 @@ export function captureSelectionTransform(
     primaryId,
     primary: primary.type === 'cube' ? cloneStudioCube(primary) : cloneStudioGroup(primary),
     parentRotation: { ...parentRotation },
-    pivot: selectionPivot(model, selectedIds),
+    pivot: selectionModelingCenter(model, selectedIds),
     before: {
       elements: selectionElements(model, selectedIds).map(cloneStudioCube),
       groups: selectionGroups(model, selectedIds).map(cloneStudioGroup),

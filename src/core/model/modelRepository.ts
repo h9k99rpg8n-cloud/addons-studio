@@ -54,6 +54,27 @@ export class ModelRepository {
     }
   }
 
+  async importModel(model: StudioModel): Promise<StudioModel> {
+    const project = await this.database.projects.get(model.projectId)
+    if (!project) {
+      throw new AppError('PROJECT_NOT_FOUND', 'This project is no longer available on this device.')
+    }
+    const imported = cloneStudioModel(model)
+    imported.identifier = await this.findAvailableIdentifier(imported.projectId, imported.identifier)
+    const issue = validateStoredModel(imported)[0]
+    if (issue) throw new AppError('MODEL_VALIDATION', issue.message)
+    try {
+      await this.database.models.add(imported)
+      return cloneStudioModel(imported)
+    } catch (error) {
+      throw new AppError(
+        'MODEL_SAVE_FAILED',
+        'Addons Studio could not import this model. No existing models were changed.',
+        { cause: error },
+      )
+    }
+  }
+
   async listModels(projectId: string): Promise<StudioModel[]> {
     const models = await this.database.models.where('projectId').equals(projectId).toArray()
     return models
@@ -374,6 +395,17 @@ export class ModelRepository {
       schemaVersion: MODEL_SCHEMA_VERSION,
       revision: existing.revision + 1,
     }
+  }
+
+  private async findAvailableIdentifier(projectId: string, preferred: string): Promise<string> {
+    let candidate = preferred
+    let suffix = 1
+    while (await this.database.models.where('[projectId+identifier]').equals([projectId, candidate]).count()) {
+      const marker = suffix === 1 ? '_imported' : `_imported_${suffix}`
+      candidate = `${preferred.slice(0, Math.max(12, 128 - marker.length))}${marker}`
+      suffix += 1
+    }
+    return candidate
   }
 }
 

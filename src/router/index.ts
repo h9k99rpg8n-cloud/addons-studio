@@ -66,6 +66,16 @@ export const router = createRouter({
       meta: { mainNav: true },
     },
     {
+      path: '/settings/whats-new',
+      name: 'whats-new',
+      component: () => import('@/features/settings/WhatsNewView.vue'),
+    },
+    {
+      path: '/settings/developer-beta',
+      name: 'developer-beta',
+      component: () => import('@/features/settings/DeveloperBetaView.vue'),
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: { name: 'home' },
     },

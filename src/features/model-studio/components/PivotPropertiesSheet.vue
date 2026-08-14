@@ -4,6 +4,7 @@ import { ref, watch } from 'vue'
 import AppButton from '@/components/common/AppButton.vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import { nodePivotCenter } from '@/core/model/modelHierarchy'
+import { useLocaleStore } from '@/stores/locale'
 import type { StudioModel, StudioModelNode, StudioVector3 } from '@/types/model'
 
 const props = defineProps<{
@@ -11,6 +12,7 @@ const props = defineProps<{
   model: StudioModel
   node?: StudioModelNode
 }>()
+const locale = useLocaleStore()
 
 const emit = defineEmits<{
   close: []
@@ -75,13 +77,13 @@ function close(): void {
 <template>
   <BottomSheet
     :open="open && Boolean(node)"
-    :title="`Edit Pivot · ${node?.name ?? 'Object'}`"
-    description="The pivot is an animation-ready anchor. Moving it does not move geometry."
+    :title="`${locale.t('Edit Pivot')} · ${node?.name ?? locale.t('Object')}`"
+    :description="locale.t('The pivot is an animation-ready anchor. Moving it does not move geometry.')"
     @close="close"
   >
     <div v-if="node" class="pivot-editor">
       <fieldset>
-        <legend>Pivot Coordinates</legend>
+        <legend>{{ locale.t('Pivot Coordinates') }}</legend>
         <label v-for="axis in (['x', 'y', 'z'] as const)" :key="axis">
           <span :class="`axis axis--${axis}`">{{ axis.toUpperCase() }}</span>
           <input
@@ -97,9 +99,9 @@ function close(): void {
       </fieldset>
 
       <div class="pivot-actions">
-        <AppButton variant="secondary" @click="applyPreset('Center pivot', nodePivotCenter(model, node))">Center Pivot</AppButton>
-        <AppButton variant="secondary" @click="applyPreset('Reset pivot', node.defaultPivot)">Reset Pivot</AppButton>
-        <AppButton variant="secondary" @click="applyPreset('Pivot to origin', { x: 0, y: 0, z: 0 })">Pivot to Origin</AppButton>
+        <AppButton variant="secondary" @click="applyPreset('Center pivot', nodePivotCenter(model, node))">{{ locale.t('Center Pivot') }}</AppButton>
+        <AppButton variant="secondary" @click="applyPreset('Reset pivot', node.defaultPivot)">{{ locale.t('Reset Pivot') }}</AppButton>
+        <AppButton variant="secondary" @click="applyPreset('Pivot to origin', { x: 0, y: 0, z: 0 })">{{ locale.t('Pivot to Origin') }}</AppButton>
       </div>
     </div>
   </BottomSheet>

@@ -15,6 +15,7 @@ import { toAppError } from '@/core/errors/AppError'
 import { modelRepository } from '@/core/model/modelRepository'
 import { RESOURCE_CATEGORIES } from '@/features/studio/resourceCategories'
 import { useProjectStore } from '@/stores/projects'
+import { useLocaleStore } from '@/stores/locale'
 import { useToastStore } from '@/stores/toasts'
 import type { ProjectType, ResourceTemplate } from '@/types/project'
 
@@ -22,6 +23,7 @@ const props = defineProps<{ id: string }>()
 const router = useRouter()
 const projects = useProjectStore()
 const toasts = useToastStore()
+const locale = useLocaleStore()
 const loading = ref(true)
 const loadError = ref('')
 const addOpen = ref(false)
@@ -112,7 +114,7 @@ function afterDelete(): void {
       <span><AppIcon name="alert-triangle" :size="30" /></span>
       <h1>Project unavailable</h1>
       <p>{{ loadError || 'This local project could not be found.' }}</p>
-      <AppButton @click="router.replace({ name: 'projects' })">Back to Projects</AppButton>
+      <AppButton @click="router.replace({ name: 'projects' })">{{ locale.t('Back to Projects') }}</AppButton>
     </section>
 
     <div v-else class="workspace-content">
@@ -126,15 +128,15 @@ function afterDelete(): void {
             <AppBadge v-if="project.experimentalFeatures" tone="warning">Experimental</AppBadge>
           </div>
           <h1>{{ project.name }}</h1>
-          <p>{{ project.description || 'A clean Bedrock project ready for future resources.' }}</p>
+          <p>{{ project.description || locale.t('A clean Bedrock project ready for future resources.') }}</p>
         </div>
       </section>
 
       <section class="resources-section" aria-labelledby="resources-heading">
         <header>
           <div>
-            <p class="eyebrow">Project Workspace</p>
-            <h2 id="resources-heading">Resources</h2>
+            <p class="eyebrow">{{ locale.t('Project Workspace') }}</p>
+            <h2 id="resources-heading">{{ locale.t('Resources') }}</h2>
           </div>
           <span>{{ modelCount }} total</span>
         </header>
@@ -152,9 +154,9 @@ function afterDelete(): void {
       <aside class="foundation-note">
         <StudioIcon name="workspace" :size="23" />
         <div>
-          <strong>Model Studio is now available</strong>
+          <strong>{{ locale.t('Model Studio is now available') }}</strong>
           <p>
-            Create local cube-based models with touch transforms. Other resource editors and Minecraft export remain clearly marked for future updates.
+            {{ locale.t('Create local cube-based models with touch transforms. Other resource editors and Minecraft export remain clearly marked for future updates.') }}
           </p>
         </div>
       </aside>
@@ -163,7 +165,7 @@ function afterDelete(): void {
     <footer v-if="project" class="workspace-add">
       <AppButton size="large" block @click="addOpen = true">
         <template #icon><StudioIcon name="add-resource" :size="23" /></template>
-        Add Resource
+        {{ locale.t('Add Resource') }}
       </AppButton>
     </footer>
 
