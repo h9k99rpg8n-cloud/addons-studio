@@ -39,9 +39,11 @@ export class TextureRepository {
   ) {}
 
   async getWorkspace(modelId: string): Promise<TextureWorkspaceSummary> {
+    const model = await this.database.models.get(modelId)
+    if (!model) throw new AppError('MODEL_NOT_FOUND', 'This model is no longer available in the project.')
     const [materials, assets, bindings] = await Promise.all([
-      this.database.materials.where('modelId').equals(modelId).toArray(),
-      this.database.textureAssets.where('modelId').equals(modelId).toArray(),
+      this.database.materials.where('projectId').equals(model.projectId).toArray(),
+      this.database.textureAssets.where('projectId').equals(model.projectId).toArray(),
       this.database.textureBindings.where('modelId').equals(modelId).toArray(),
     ])
     return {
@@ -51,20 +53,39 @@ export class TextureRepository {
     }
   }
 
+  async listMaterials(projectId: string): Promise<StudioMaterial[]> {
+    return (await this.database.materials.where('projectId').equals(projectId).toArray())
+      .map(cloneMaterial)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+  }
+
+  async listTextureAssets(projectId: string): Promise<StudioTextureAsset[]> {
+    return (await this.database.textureAssets.where('projectId').equals(projectId).toArray())
+      .map(cloneAsset)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+  }
+
+  async getMaterial(materialId: string): Promise<StudioMaterial | undefined> {
+    const material = await this.database.materials.get(materialId)
+    return material ? cloneMaterial(material) : undefined
+  }
+
+  async getTextureAsset(assetId: string): Promise<StudioTextureAsset | undefined> {
+    const asset = await this.database.textureAssets.get(assetId)
+    return asset ? cloneAsset(asset) : undefined
+  }
+
   async countMaterials(projectId: string): Promise<number> {
     return this.database.materials.where('projectId').equals(projectId).count()
   }
 
   async createMaterial(input: {
     projectId: string
-    modelId: string
     name: string
     identifier?: string
   }): Promise<StudioMaterial> {
-    const model = await this.database.models.get(input.modelId)
-    if (!model || model.projectId !== input.projectId) {
-      throw new AppError('MODEL_NOT_FOUND', 'This model is no longer available in the project.')
-    }
+    const project = await this.database.projects.get(input.projectId)
+    if (!project) throw new AppError('PROJECT_NOT_FOUND', 'This project is no longer available on this device.')
     const name = input.name.trim().slice(0, 80)
     if (!name) throw new AppError('MATERIAL_FAILED', 'Give this material a name.')
     const base = normalizeIdentifier(input.identifier || name) || 'material'
@@ -73,7 +94,6 @@ export class TextureRepository {
     const material: StudioMaterial = {
       id: createId(),
       projectId: input.projectId,
-      modelId: input.modelId,
       name,
       identifier,
       createdAt: now,
@@ -116,7 +136,6 @@ export class TextureRepository {
     const asset: StudioTextureAsset = {
       id: createId(),
       projectId: material.projectId,
-      modelId: material.modelId,
       name: file.name.replace(/\.[^.]+$/, '') || material.name,
       mimeType: inspection.mimeType,
       blob: file.slice(0, file.size, inspection.mimeType),
@@ -180,6 +199,19 @@ export class TextureRepository {
     textureWidth: number
     textureHeight: number
   }): Promise<StudioTextureBinding> {
+    const [model, material] = await Promise.all([
+      this.database.models.get(input.modelId),
+      this.database.materials.get(input.materialId),
+    ])
+    if (!model || model.projectId !== input.projectId) {
+      throw new AppError('MODEL_NOT_FOUND', 'This model is no longer available in the project.')
+    }
+    if (!model.elements.some((cube) => cube.id === input.cubeId)) {
+      throw new AppError('MATERIAL_FAILED', 'The selected cube is no longer available.')
+    }
+    if (!material || material.projectId !== input.projectId) {
+      throw new AppError('MATERIAL_FAILED', 'The selected material is not available in this project.')
+    }
     const existing = await this.database.textureBindings
       .where('[modelId+cubeId]')
       .equals([input.modelId, input.cubeId])
@@ -222,18 +254,21 @@ export class TextureRepository {
     )
   }
 
+  /** Deleting a model removes only its bindings; project materials remain reusable. */
   async deleteForModel(modelId: string): Promise<void> {
-    const materials = await this.database.materials.where('modelId').equals(modelId).toArray()
+    await this.database.textureBindings.where('modelId').equals(modelId).delete()
+  }
+
+  async deleteForProject(projectId: string): Promise<void> {
     await this.database.transaction(
       'rw',
       [this.database.materials, this.database.textureAssets, this.database.textureBindings],
       async () => {
-        await this.database.materials.where('modelId').equals(modelId).delete()
-        await this.database.textureAssets.where('modelId').equals(modelId).delete()
-        await this.database.textureBindings.where('modelId').equals(modelId).delete()
+        await this.database.materials.where('projectId').equals(projectId).delete()
+        await this.database.textureAssets.where('projectId').equals(projectId).delete()
+        await this.database.textureBindings.where('projectId').equals(projectId).delete()
       },
     )
-    void materials
   }
 
   private async findAvailableIdentifier(projectId: string, preferred: string): Promise<string> {
