@@ -1,9 +1,9 @@
 export type TextureFace = 'north' | 'south' | 'east' | 'west' | 'up' | 'down'
 
+/** A binary image owned by the project material library, not by one model. */
 export interface StudioTextureAsset {
   id: string
   projectId: string
-  modelId: string
   name: string
   mimeType: 'image/png' | 'image/jpeg'
   blob: Blob
@@ -13,10 +13,10 @@ export interface StudioTextureAsset {
   updatedAt: number
 }
 
+/** Materials are reusable across every model in a project. */
 export interface StudioMaterial {
   id: string
   projectId: string
-  modelId: string
   name: string
   identifier: string
   textureAssetId?: string
@@ -35,6 +35,7 @@ export interface StudioUvRect {
   flipVertical: boolean
 }
 
+/** Bindings are the model-specific bridge between geometry and reusable materials. */
 export interface StudioTextureBinding {
   id: string
   projectId: string
