@@ -190,6 +190,10 @@ function currentCameraSettings(): StudioCameraSettings {
   }
 }
 
+function onControlsEnd(): void {
+  if (!drag && !directTouch) emit('cameraNavigated')
+}
+
 function resize(): void {
   if (!runtime || !container.value) return
   resizeStudioRenderer(container.value, runtime.renderer, runtime.camera, props.lowPower)

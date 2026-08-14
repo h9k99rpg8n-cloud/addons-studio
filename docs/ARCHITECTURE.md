@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the Alpha `0.0.3.6.2` Snapshot 3 mobile foundation, project organization, and first-generation Model Core workflow. It defines boundaries for future work; it is not a claim that Texture Core or a complete Bedrock add-on export engine exists.
+This document describes the Addons Studio Alpha `0.0.3.6.3` architecture after the first-generation Model Core stabilization. Texture Core, Animation Core, and complete Bedrock add-on export are still future systems.
 
 ## Application layers
 
@@ -10,74 +10,144 @@ This document describes the Alpha `0.0.3.6.2` Snapshot 3 mobile foundation, proj
 | `src/components/common` | Touch-friendly primitives, dialogs, sheets, feedback, and brand mark |
 | `src/components/navigation` | Main mobile navigation and headers |
 | `src/components/project` | Reusable project cards, actions, icons, and resource pickers |
-| `src/core/app` | Product release metadata shared by visible surfaces |
-| `src/core/icons` | Typed, original Addons Studio product-icon registry |
-| `src/features` | Lazy-loaded route-level product features |
+| `src/core/app` | Product release metadata and release notes |
+| `src/core/icons` | Typed original Addons Studio product-icon registry |
 | `src/core/project` | Project rules, version registry, persistence scheduling, and resource templates |
-| `src/core/model` | Internal model factory, transform math, hierarchy/productivity/Inflate/folder operations, JSON adapters, validation, repository, debounced persistence, and command history |
+| `src/core/model` | Model domain, transforms, hierarchy, Inflate math, folders, productivity operations, validation, persistence, history, and portability |
 | `src/core/i18n` | English-source / Spanish message catalog that never rewrites technical IDs |
-| `src/core/productivity` | Opt-in local-only Developer Beta timers, routine, and usage records |
-| `src/features/model-studio` | Mobile model list, 3D viewport, outliner, and touch properties sheets |
+| `src/core/productivity` | Opt-in local Developer Beta timers, routine, and usage records |
+| `src/features/model-studio` | Model Studio product UI and its isolated 3D runtime modules |
 | `src/core/storage` | Dexie schema and lightweight preferences |
 | `src/core/history` | Recovery-snapshot service boundary |
 | `src/core/validation` | Stored-schema compatibility checks |
 | `src/core/errors` | Structured logging and user-safe error mapping |
 | `src/stores` | Pinia application state |
 | `src/styles` | Design tokens, themes, safe defaults, and accessibility utilities |
-| `src/assets/brand` | Editable SVG sources for the logo mark and PWA icon system |
 | `src/types` | Shared domain contracts |
+
+## Source-of-truth rule
+
+`StudioModel` is the source of truth for editable model data. Three.js is a renderer and interaction runtime only.
+
+Persisted model data never stores `THREE.Scene`, `THREE.Mesh`, cameras, materials, renderers, `OrbitControls`, or other Three.js objects. Editor gestures convert pointer input into changes to `StudioModel`; the renderer then reflects those changes.
+
+This boundary allows Addons Studio to change viewport implementation without changing the portable model format.
+
+## Model Core domain
+
+The core model layer remains independent from Vue and the DOM. It owns:
+
+- cube and group contracts
+- model folders
+- pivots
+- hierarchy transforms
+- Global / Local / Parent transform math
+- center-preserving and directional Resize
+- Mirror, Align, Distribute, Duplicate, and Duplicate Again
+- multi-selection calculations
+- Inflate fitting math
+- validation
+- command history state
+- `.model.json` adapters and serialization
+- persistence normalization and migration helpers
+
+Model Folders are editor organization only. Structural Groups affect child transforms. Those concepts remain deliberately separate.
+
+## Model Studio runtime modules
+
+Alpha `0.0.3.6.3` removes major rendering responsibilities from the Vue viewport component and places them behind focused runtime modules under `src/features/model-studio/runtime`.
+
+### `threeSceneRuntime.ts`
+
+Creates and disposes the Three.js scene, transparent renderer, camera, `OrbitControls`, lighting, grid, origin axes, selection outline, runtime groups, and editor preview materials. Heavy Three.js objects stay in ordinary TypeScript variables and are never placed inside deep Vue reactivity.
+
+### `cameraRuntime.ts`
+
+Owns camera sensitivity, touch navigation profiles, standard camera views, renderer resize behavior, and device-pixel-ratio limits.
+
+### `modelMeshRuntime.ts`
+
+Maps `StudioModel` cuboids to disposable Three.js meshes. It does not own geometry truth. Stable cube IDs choose stable preview-material variants so untextured models do not randomly change appearance after reload.
+
+### `classicGizmoRuntime.ts`
+
+Owns Addons Studio's original Move, Rotate, Resize, and Pivot gizmo geometry. Visible handles remain precise while larger invisible picker geometry gives fingers a larger hit target. The editor does not use default Three.js `TransformControls`.
+
+### `touchGizmoRuntime.ts`
+
+Owns direct-touch transform updates. Touch Gizmo Move, Resize, and Rotate are official Model Core interactions in `0.0.3.6.3`. Touch Rotate is no longer gated as an experimental tool.
+
+### `inflateRuntime.ts`
+
+Owns Three.js visualization and raycast targets for Inflate. The actual Inflate fitting calculations remain in `src/core/model/modelInflate.ts`, keeping rendering separate from geometry logic.
+
+### `viewportMath.ts`
+
+Contains shared screen-space calculations, camera-profile factors, stable material hashing, and the common CSS-pixel touch deadzone.
+
+### `viewportSelection.ts`
+
+Contains viewport-facing selection helpers and the separation between the geometry/selection center and the persisted Pivot.
+
+### `viewportResources.ts`
+
+Owns disposal helpers and the original Studio Preview Material 2.0 runtime assets.
+
+### `BackgroundGuideLayer.vue`
+
+Presents editor environment backgrounds and viewport-aligned modeling guides as one rendering layer. Existing guide/reference records remain compatible and are not converted into model geometry.
+
+## Touch ownership and camera safety
+
+Model Studio uses deterministic pointer ownership. UI sheets lock viewport interaction. Within the viewport, Inflate and classic gizmo pickers receive priority before direct transforms, cube selection, or camera navigation.
+
+A shared CSS-pixel deadzone distinguishes taps from intentional drags. A second finger cancels a pending direct transform so pinch zoom and two-finger pan remain available. When a gizmo or Touch Gizmo owns a pointer, `OrbitControls` is temporarily disabled and restored afterward.
+
+World-per-pixel sensitivity is bounded and pointer discontinuities are rejected before they can produce invalid transform deltas. These safeguards prevent the historical giant-cube Resize failure on mobile Safari.
+
+## Rendering and battery policy
+
+Model Studio renders on demand instead of running a permanent idle animation loop. Rendering occurs when camera state, geometry, selection, gizmos, editor background, or viewport dimensions change.
+
+The primary viewport caps device pixel ratio. The secondary split viewport uses a lower-power configuration. Runtime teardown disposes controls, geometry, materials, preview textures, observers, pointer listeners, WebGL renderer resources, and editor-image object URLs owned by the asset runtime.
+
+## Studio Preview Material 2.0
+
+Untextured cuboids use an original Addons Studio editor-only pixel-inspired preview. A tiny generated `DataTexture` uses nearest-neighbor sampling and muted material variants to distinguish adjacent cuboids while clearly remaining a temporary editor visualization.
+
+The preview is not a Minecraft texture and is never exported as one. Future Texture Core integration will replace the preview at render time when a real material/texture binding exists.
+
+## Background / Guide
+
+Environment backgrounds and modeling guides share one user-facing workflow but remain distinct data concepts.
+
+Environment backgrounds include Dark Studio, Sky, Night, Sunset, Snow, and a persistent custom image. Modeling guides remain viewport-aligned image records assigned to axial views. Guides have no pointer events, never enter Three.js raycasting, never affect model bounds, and never export as geometry.
+
+Persistent editor images live as Blob records in IndexedDB. Runtime object URLs are recreated per editor session and revoked during replacement, deletion, model changes, or teardown. Object URLs and large base64 strings are never treated as persistent identifiers.
 
 ## Project persistence
 
-`AddonsStudioDatabase` schema version 3 has seven IndexedDB tables:
+`AddonsStudioDatabase` keeps project metadata, recovery snapshots, project folders, models, editor assets, and migration-compatible legacy reference records in IndexedDB. Project creation, duplication, deletion, and package import use transactions where data integrity requires them.
 
-- `projects` stores project metadata, optional folder placement, and schema/revision numbers.
-- `snapshots` stores timestamped recovery copies keyed by project.
-- `settings` reserves versioned application settings that need IndexedDB later.
-- `projectFolders` stores a single, non-nested organization level.
-- `models` stores extensible Addons Studio internal models, cube elements, lightweight reference metadata, and editor-background preferences.
-- `modelEditorAssets` stores typed reference/background image blobs and dimensions separately so model records and project cards remain lightweight.
-- `modelReferenceAssets` remains as a read-compatible Alpha 0.0.3–0.0.3.6 migration store; new image writes use `modelEditorAssets`.
+Model autosave remains debounced and flushes on editor exit/page hide. The `0.0.3.6.3` runtime refactor does not reset IndexedDB or replace the stored model schema merely to reorganize rendering code.
 
-Project creation, duplication, and deletion use Dexie transactions. Deleting a project also removes its snapshots, models, reference blobs, and custom backgrounds in the same logical operation. Duplicating a project creates independent stable IDs for copied models, elements, references, background links, and blobs. Deleting a folder never deletes projects: every contained project moves to the root list in the same transaction before the folder is removed.
+## Portability
 
-Project metadata autosave is debounced to 650 ms after a meaningful change. Successfully saved projects become eligible for a recovery checkpoint approximately every five minutes; at most 15 snapshots are retained per project. Model records use an independent debounced service and flush on page hide or editor exit. Recovery snapshots do not yet include full model history; the persistent model record is the Alpha 0.0.3.6.2 recovery boundary.
+Canonical `.model.json` export remains a versioned Addons Studio model document containing editable geometry, groups, folders, transforms, pivots, hierarchy relationships, and safe metadata. Binary editor backgrounds/guides remain outside the primary JSON document.
 
-The current image importer crops and resizes project icons to 256 × 256 in the browser before storing them. Large future binary assets must use dedicated records and thumbnails rather than being copied into project metadata.
+JSON import continues through explicit format detection and adapters rather than treating arbitrary JSON as a model.
 
-## Model Studio foundation
+The beta `.addonsstudio` project package remains a versioned ZIP container with transactional import, ID remapping, model/editor records, binary editor assets, and duplicate-project protection.
 
-`StudioModel` is the editor source of truth. Schema version 5 preserves stable cube IDs, absolute model-space transforms, visibility and lock state, future-compatible metadata, one-level structural Groups, organizational Model Folders, cube/group pivots, independent precision, camera preferences, Resize direction, Touch Gizmo mode, transform space, language, References 2.0 metadata, and editor-background preferences. Earlier Alpha records normalize on read with centered pivots, empty groups/folders where absent, migrated axial reference guides, legacy Tactilismos → Touch Gizmo values, and safe default settings; this does not require an IndexedDB reset. Editor gestures never use Three.js as a file format.
+## Localization and mobile UI
 
-Three.js and `OrbitControls` are dynamically imported only on the Model Studio route. Camera controls remain enabled in the normal modeling workflow: an empty-space drag orbits, pinch zooms, and two fingers pan. A capture-phase picker prevents camera movement when a cube, custom gizmo handle, Inflate point, or active Touch Gizmo owns the gesture. Touch Gizmo uses a deliberate hold before direct screen-plane Move, radial uniform Resize, or opt-in experimental circular single-object Rotate starts; navigation movement or a second finger cancels a pending direct transform. Classic Gizmos and Hybrid retain the original custom controls. Compact overlays select the active transform space and each viewport's camera independently. One- and two-viewport layouts are implemented; the secondary viewport reduces device-pixel ratio and rendering features, and either panel can be temporarily maximized.
+English remains the source language and Spanish is officially supported. Identifiers, namespaces, JSON keys, and file extensions never change with UI language.
 
-Normal modeling gizmos use a geometry/selection center so a distant custom pivot does not make editing awkward. Pivot mode alone presents the persisted anchor. Inflate exposes original visible points backed by much larger invisible raycast targets and changes only the selected cube's required boundaries; cuboids remain independent. Snapshot 3 intentionally limits Inflate to axis-aligned cubes rather than pretending rotated fitting is reliable.
+Interactive Model Studio text/number fields retain an effective 16 CSS-pixel size where required to avoid iPhone Safari focus zoom. Product interaction targets continue to follow the project's mobile touch-target standard.
 
-The viewport renders on demand, caps device pixel ratio, responds to rotation/resizing, and disposes geometries, materials, shared editor-image URLs, controls, observers, and pointer listeners on teardown. Cube picking and original Addons Studio transform handles use raycasting. Visible handles stay precise while transparent picker geometry is deliberately thicker for fingers. Axis projection and world-per-pixel sensitivity are frozen at gesture start, near-camera-axis sensitivity is bounded, discontinuous pointer coordinates are rejected, and non-finite or implausible world deltas never reach model data. The world-origin sphere remains removed; the mathematical origin, origin axes, and green grid remain.
+## Future engine boundaries
 
-The hierarchy service captures only the selected node plus affected children. Cubes remain in absolute model space for backward compatibility. Normal Resize changes dimensions around the visual center; Positive/Negative Side modes move the center by half the size delta along the active Global/Local/Parent axis. Custom pivots are anchors and never become geometry. Group move/rotate/resize operations apply their delta to every child around the shared group pivot, and transform-space rotations use quaternion composition before returning stable XYZ Euler values.
-
-The productivity service normalizes deliberate touch multi-selection, computes rotated cube bounds, and produces compact before/after states for batch Move, Mirror, Align, Distribute, visibility, and locking. Duplicate and Duplicate + Mirror generate new IDs and remap group membership; Duplicate Again applies the last post-duplicate translation to the next copy. Isolation is viewport-only state and never overwrites intended model visibility. Structural Groups transform children; Model Folders contain editor metadata only and never transform geometry. The command history treats each batch operation as one undoable command rather than storing entire project copies.
-
-## Portability boundaries
-
-Canonical `.model.json` files contain a versioned Addons Studio model document: name, identifier, cubes, structural groups, organizational folders, transforms, pivots, hierarchy references, and safe metadata. Binary references and backgrounds are deliberately excluded from primary JSON and declared under an editor omission field. Import uses a detector and explicit adapters (`studioJsonAdapter`, `bedrockGeometryAdapter`) before conversion and validation; unrelated JSON is rejected.
-
-The beta `.addonsstudio` project format is a versioned ZIP container built with fflate. It contains `manifest.json`, canonical models, separate editor records, and binary editor assets. Import stages and validates the complete package, remaps every internal project/model/node/folder/reference/asset ID, checks storage when available, and commits through one Dexie transaction. A collision never silently overwrites an existing project.
-
-References 2.0 are editor-only, viewport-aligned DOM guides and are never project textures or Three.js scene geometry. Each guide is assigned to Front, Back, Left, Right, Top, or Bottom and supports 2D position, uniform scale, opacity, visibility, horizontal/vertical flips, rename, and optional rotation. The layer has no pointer events, never enters model raycasts or bounds, and each split viewport resolves only its own assigned guides. Legacy 3D reference metadata maps conservatively to the closest axial view and 2D values.
-
-Editor Background is a separate atmosphere layer behind the transparent WebGL canvas. Built-in backgrounds use lightweight original CSS gradients; a custom PNG/JPG uses a dedicated binary asset with fit, opacity, and brightness preferences. The model stores only an asset ID. `ModelEditorAssetRuntime` creates one object URL per open asset, shares it between both viewports, and revokes it after replacement, deletion, model change, or editor teardown. Persistent records always contain the Blob itself—never an object URL or large base64 metadata.
-
-## Extensibility
-
-`ResourceTemplateRegistry` allows future contextual object presets to register without hard-coding them into the Workspace. A future `Block → Slab` template can own only slab-relevant fields, including the term **Collision Box**, without exposing every block property.
-
-The user-facing term **Material** is reserved for the abstraction that will later connect texture, UV, and rendering information. The current Material card and template are architectural placeholders, not a Material editor.
-
-The icon architecture makes the same separation as the product architecture. `AppIcon` wraps Lucide for universal UI actions such as back, close, search, and delete. `StudioIcon` renders only Addons Studio-specific concepts from a typed 24 × 24 registry. Categories and contextual templates reference that registry by type, so an invalid or mismatched product icon fails type checking.
-
-Large future engines should live behind explicit package boundaries:
+Large future engines should remain isolated from Model Core. The intended long-term shape remains:
 
 ```text
 packages/
@@ -91,25 +161,6 @@ packages/
   addon-builder/
 ```
 
-Those package-level engines do not exist in Alpha `0.0.3.6.2`. The current in-app Model Studio foundation is intentionally ready for the planned 0.0.3.6.3 modularization without changing stored editor concepts.
+Alpha `0.0.3.6.3` prepares the Model Core boundary but does not pretend those future packages already exist.
 
-## Visual system
-
-The Creative Core Cube is the application mark. Its outer cube represents construction and modular resources; the gold inner cube represents the user’s creative work. The source SVGs are original project assets and do not reproduce Minecraft art or branding.
-
-CSS custom properties define brand and semantic colors, spacing, typography, radii, shadows, transitions, icon sizes, header heights, card padding, and sheet spacing. Components consume these tokens and remain functional in system, light, and dark themes. Resource tones support recognition, but cards also retain labels and distinct icon silhouettes so color is never the only signal.
-
-## Routing and deployment
-
-Major views are lazy-loaded, including the Three.js Model Studio bundle. Hash history avoids static-server fallback requirements and works at `/addons-studio/` on GitHub Pages. Vite derives its production base path from `GITHUB_REPOSITORY` while GitHub Actions is running. The same base is used by PWA manifest and service-worker assets.
-
-## Error and data-safety rules
-
-- Errors map to user-readable messages.
-- Toasts are non-destructive and autosave does not spam them.
-- A failed save keeps the current UI state open.
-- Reference/background attachment or removal updates model metadata and its Blob in one IndexedDB transaction.
-- Folder deletion keeps all projects and moves them to the root list.
-- No error path clears the project database automatically.
-- Temporary-cache clearing targets only caches whose names contain `addons-studio`.
-- Unsupported future project schemas fail closed instead of being silently rewritten.
+The next major product branch is planned as Alpha `0.0.4` — Texture Core. Model Core should be consumed by that engine rather than rewritten by it.

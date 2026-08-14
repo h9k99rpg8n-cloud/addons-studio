@@ -71,6 +71,12 @@ const controlOptions: readonly { value: StudioControlMode; label: string; help: 
   { value: 'hybrid', label: 'Hybrid', help: 'Use classic gizmos and safe direct touch together.' },
 ]
 
+const cameraProfiles = [
+  { id: 'standard', label: 'Standard' },
+  { id: 'one-finger', label: 'One-finger focused' },
+  { id: 'two-finger', label: 'Two-finger focused' },
+] as const
+
 const spaceOptions: readonly StudioTransformSpace[] = ['global', 'local', 'parent']
 const transformPresets: readonly (number | null)[] = [null, 1, 0.5, 0.25]
 const rotationPresets: readonly (number | null)[] = [null, 1, 5, 15, 22.5, 45, 90]
@@ -189,7 +195,17 @@ function resetCamera(): void {
         <fieldset>
           <legend>{{ locale.t('Touch navigation profile') }}</legend>
           <div class="profile-list">
-            <button v-for="profile in [{ id: 'standard', label: 'Standard' }, { id: 'one-finger', label: 'One-finger focused' }, { id: 'two-finger', label: 'Two-finger focused' }]" :key="profile.id" type="button" class="option-row" :class="{ active: camera.profile === profile.id }" @click="updateCamera('profile', profile.id)"><strong>{{ locale.t(profile.label) }}</strong><AppIcon v-if="camera.profile === profile.id" name="check" :size="19" /></button>
+            <button
+              v-for="profile in cameraProfiles"
+              :key="profile.id"
+              type="button"
+              class="option-row"
+              :class="{ active: camera.profile === profile.id }"
+              @click="updateCamera('profile', profile.id)"
+            >
+              <strong>{{ locale.t(profile.label) }}</strong>
+              <AppIcon v-if="camera.profile === profile.id" name="check" :size="19" />
+            </button>
           </div>
         </fieldset>
         <label class="slider-row"><span>{{ locale.t('Orbit sensitivity') }}<output>{{ camera.orbitSensitivity.toFixed(2) }}×</output></span><input :value="camera.orbitSensitivity" type="range" min="0.25" max="3" step="0.05" @input="updateCamera('orbitSensitivity', Number(($event.target as HTMLInputElement).value))" /></label>

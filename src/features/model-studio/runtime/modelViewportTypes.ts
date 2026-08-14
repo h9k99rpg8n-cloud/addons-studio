@@ -1,8 +1,10 @@
+import type * as ThreeNamespace from 'three'
+
 import type { StudioHierarchyState, StudioNodeTransformSession, StudioAxis } from '@/core/model/modelHierarchy'
 import type { StudioSelectionTransformSession } from '@/core/model/modelProductivity'
 import type { ModelManipulationTool, StudioVector3 } from '@/types/model'
 
-export type ThreeModule = typeof import('three')
+export type ThreeModule = typeof ThreeNamespace
 export type Axis = StudioAxis
 
 export interface AxisProjection {
