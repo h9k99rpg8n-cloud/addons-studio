@@ -83,6 +83,8 @@ export class TextureRepository {
     projectId: string
     name: string
     identifier?: string
+    /** Transitional caller compatibility; materials themselves remain project-scoped. */
+    modelId?: string
   }): Promise<StudioMaterial> {
     const project = await this.database.projects.get(input.projectId)
     if (!project) throw new AppError('PROJECT_NOT_FOUND', 'This project is no longer available on this device.')
