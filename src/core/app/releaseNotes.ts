@@ -10,6 +10,19 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
     version: APP_VERSION,
+    title: 'Texture Core 0.2',
+    subtitle: 'UV & Paint Update',
+    highlights: [
+      'UV 2.0 shows the mapped faces of the selected cuboid together as a visual atlas over the real texture',
+      'Auto Box UV generates a compact six-face cuboid net from the model dimensions and keeps it inside the texture',
+      'Multi-face selection can apply one material to several faces and reset selected UV islands together',
+      'UV precision now supports 0.25, 0.5, 1, 2, and 4 px snapping plus Copy, Paste, Fit, Flip, Rotate, and Reset',
+      'Paint 2.0 adds Line, Rectangle, Replace Color, opacity, Mirror X/Y, pixel grid, 64-step history, and touch-first pinch zoom',
+      'Texture Core was modularized again so UV and Paint can evolve independently before the 0.0.4.3 stabilization release',
+    ],
+  },
+  {
+    version: '0.0.4.0.1',
     title: 'Texture Core goes visual',
     subtitle: 'Visual Texture Workspace Update',
     highlights: [
