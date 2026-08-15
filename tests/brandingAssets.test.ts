@@ -21,11 +21,9 @@ describe('release metadata and branding assets', () => {
       version: string
     }
 
-    // npm keeps the product's decimal Alpha patch line in SemVer prerelease
-    // identifiers while Addons Studio shows the full product version to users.
-    expect(packageJson.version).toBe('0.0.4-alpha.0.1')
-    expect(APP_VERSION).toBe('0.0.4.0.1')
-    expect(APP_RELEASE_LABEL).toBe('Alpha 0.0.4.0.1')
+    expect(packageJson.version).toBe('0.0.4-alpha.2')
+    expect(APP_VERSION).toBe('0.0.4.2')
+    expect(APP_RELEASE_LABEL).toBe('Alpha 0.0.4.2')
   })
 
   it.each([
