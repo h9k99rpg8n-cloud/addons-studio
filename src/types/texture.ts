@@ -1,4 +1,5 @@
 export type TextureFace = 'north' | 'south' | 'east' | 'west' | 'up' | 'down'
+export type UvPrecision = 0.25 | 0.5 | 1 | 2 | 4
 
 /** A binary image owned by the project material library, not by one model. */
 export interface StudioTextureAsset {
