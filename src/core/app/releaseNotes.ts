@@ -10,6 +10,19 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
     version: APP_VERSION,
+    title: 'Texture Core goes visual',
+    subtitle: 'Visual Texture Workspace Update',
+    highlights: [
+      'Texture Core redesigned around a touch-first 3D + UV workspace instead of form-heavy controls',
+      'Tap a cuboid face in the 3D preview to select the matching North, South, East, West, Up, or Down UV face',
+      'Visual UV island editing with drag, resize handle, 90° rotation, horizontal/vertical flip, Fit, and 1 px precision',
+      'Materials redesigned as a reusable visual project library with cleaner mobile Quick Edit',
+      'Paint and Quick Edit now use pinch zoom, touch panning, Pixel Inspect, safer mobile inputs, and compact contextual tools',
+      'Texture preview camera now fits the real model bounds for a closer Model Studio-like view',
+    ],
+  },
+  {
+    version: '0.0.4.0',
     title: 'Texture Core is here',
     subtitle: 'Texture Core Foundation',
     highlights: [
