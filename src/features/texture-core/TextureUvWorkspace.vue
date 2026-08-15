@@ -30,7 +30,6 @@ const emit = defineEmits<{
 
 const stage = ref<HTMLDivElement>()
 const textureUrl = ref('')
-const localPrecision = ref<UvPrecision>(1)
 const clipboard = ref<StudioUvRect>()
 const gesture = ref<{
   pointerId: number
@@ -43,7 +42,7 @@ const gesture = ref<{
 
 const textureWidth = computed(() => Math.max(1, props.asset?.width ?? 16))
 const textureHeight = computed(() => Math.max(1, props.asset?.height ?? 16))
-const precision = computed<UvPrecision>(() => props.precision ?? localPrecision.value)
+const precision = computed<UvPrecision>(() => props.precision ?? 1)
 const visibleBindings = computed(() => {
   if (props.bindings?.length) return props.bindings
   return props.binding ? [props.binding] : []
@@ -108,8 +107,13 @@ function styleFor(binding: StudioTextureBinding): Record<string, string> {
 
 function publish(binding: StudioTextureBinding, uv: StudioUvRect, commit = false): void {
   const next = clampUv(uv)
-  if (binding.id === activeBinding.value?.id) emit(commit ? 'commit' : 'change', next)
-  emit(commit ? 'commitBinding' : 'changeBinding', binding.id, next)
+  if (commit) {
+    if (binding.id === activeBinding.value?.id) emit('commit', next)
+    emit('commitBinding', binding.id, next)
+    return
+  }
+  if (binding.id === activeBinding.value?.id) emit('change', next)
+  emit('changeBinding', binding.id, next)
 }
 
 function startGesture(event: PointerEvent, binding: StudioTextureBinding, mode: 'move' | 'resize'): void {
@@ -212,17 +216,10 @@ function pasteActive(): void {
         <span v-if="activeBinding">{{ activeUv.x }}, {{ activeUv.y }} · {{ activeUv.width }}×{{ activeUv.height }} px · {{ visibleBindings.length }} islands</span>
         <span v-else>Assign a material to map this face</span>
       </div>
-      <label class="precision-control">
+      <div class="precision-control" aria-label="UV precision">
         <span>Snap</span>
-        <select v-if="precision === localPrecision" v-model.number="localPrecision" aria-label="UV precision">
-          <option :value="0.25">0.25 px</option>
-          <option :value="0.5">0.5 px</option>
-          <option :value="1">1 px</option>
-          <option :value="2">2 px</option>
-          <option :value="4">4 px</option>
-        </select>
-        <output v-else>{{ precision }} px</output>
-      </label>
+        <output>{{ precision }} px</output>
+      </div>
     </header>
 
     <div class="uv-actions" aria-label="UV tools">
@@ -237,11 +234,7 @@ function pasteActive(): void {
     </div>
 
     <div class="uv-stage-wrap">
-      <div
-        ref="stage"
-        class="uv-stage"
-        :style="{ aspectRatio: `${textureWidth} / ${textureHeight}` }"
-      >
+      <div ref="stage" class="uv-stage" :style="{ aspectRatio: `${textureWidth} / ${textureHeight}` }">
         <div class="checker" />
         <img v-if="textureUrl" :src="textureUrl" alt="" draggable="false" />
         <div v-else class="empty-texture">No texture</div>
@@ -250,10 +243,7 @@ function pasteActive(): void {
           v-for="entry in visibleBindings"
           :key="entry.id"
           class="uv-island"
-          :class="{
-            active: entry.face === face,
-            selected: selectedFaceSet.has(entry.face),
-          }"
+          :class="{ active: entry.face === face, selected: selectedFaceSet.has(entry.face) }"
           :style="styleFor(entry)"
           @pointerdown="startGesture($event, entry, 'move')"
           @pointermove="moveGesture"
@@ -287,7 +277,7 @@ function pasteActive(): void {
 .uv-workspace { display: grid; min-height: 0; background: #0e1210; color: #f3f6f4; }
 .uv-toolbar { min-height: 3.35rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.5rem 0.65rem; border-bottom: 1px solid #ffffff16; background: #141917; }
 .uv-summary { min-width: 0; display: grid; gap: 0.08rem; }.uv-summary strong { font-size: 0.76rem; letter-spacing: 0.04em; }.uv-summary span { overflow: hidden; color: #9eaaa3; font-size: 0.64rem; text-overflow: ellipsis; white-space: nowrap; }
-.precision-control { display: flex; flex: 0 0 auto; align-items: center; gap: .35rem; color: #8f9a94; font-size: .6rem; }.precision-control select { min-height: 2.45rem; border: 1px solid #ffffff18; border-radius: .65rem; padding: 0 .45rem; background: #202723; color: #e8eee9; font-size: 16px; }.precision-control output { min-width: 3rem; color: #baf4cb; font-family: var(--font-mono); }
+.precision-control { display: flex; flex: 0 0 auto; align-items: center; gap: .35rem; color: #8f9a94; font-size: .6rem; }.precision-control output { min-width: 3rem; color: #baf4cb; font-family: var(--font-mono); }
 .uv-actions { display: flex; gap: .3rem; overflow-x: auto; padding: .42rem .55rem; border-bottom: 1px solid #ffffff10; background: #111613; scrollbar-width: none; }.uv-actions::-webkit-scrollbar { display: none; }.uv-actions button { flex: 0 0 auto; min-height: 2.55rem; border: 1px solid #ffffff18; border-radius: .7rem; padding: 0 .65rem; background: #202723; color: #e8eee9; font-size: .66rem; font-weight: 800; }.uv-actions button.primary { border-color: #56d67c66; background: #173823; color: #c1f6cf; }.uv-actions button:disabled { opacity: .35; }
 .uv-stage-wrap { min-height: 13rem; display: grid; place-items: center; overflow: auto; padding: 1rem; overscroll-behavior: contain; }
 .uv-stage { position: relative; width: min(100%, 34rem); max-height: 50dvh; overflow: hidden; border: 1px solid #ffffff20; border-radius: 0.55rem; box-shadow: 0 18px 50px #0008; touch-action: none; }
