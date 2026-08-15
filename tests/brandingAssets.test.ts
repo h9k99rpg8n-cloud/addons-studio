@@ -21,11 +21,11 @@ describe('release metadata and branding assets', () => {
       version: string
     }
 
-    // npm requires a three-part SemVer string; the product keeps the requested
-    // four-part Alpha display version on user-facing surfaces.
-    expect(packageJson.version).toBe('0.0.4-alpha.0')
-    expect(APP_VERSION).toBe('0.0.4.0')
-    expect(APP_RELEASE_LABEL).toBe('Alpha 0.0.4.0')
+    // npm keeps the product's decimal Alpha patch line in SemVer prerelease
+    // identifiers while Addons Studio shows the full product version to users.
+    expect(packageJson.version).toBe('0.0.4-alpha.0.1')
+    expect(APP_VERSION).toBe('0.0.4.0.1')
+    expect(APP_RELEASE_LABEL).toBe('Alpha 0.0.4.0.1')
   })
 
   it.each([
