@@ -109,6 +109,12 @@ watch(selectedAsset, async () => {
   await loadSelectedTextureIntoCanvas()
 })
 
+watch(mode, async (nextMode) => {
+  if (nextMode !== 'paint') return
+  await nextTick()
+  await loadSelectedTextureIntoCanvas()
+})
+
 function cleanupObjectUrl(): void {
   if (activeObjectUrl) URL.revokeObjectURL(activeObjectUrl)
   activeObjectUrl = undefined
