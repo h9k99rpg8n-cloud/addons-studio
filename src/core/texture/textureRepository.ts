@@ -10,6 +10,7 @@ import type {
 import { createId } from '@/utils/createId'
 
 import { inspectTextureImage, type TextureImageInspector } from './textureImageValidation'
+import { normalizeUvRect, uvRectsEqual } from './textureUvService'
 
 function cloneMaterial(material: StudioMaterial): StudioMaterial {
   return { ...material }
@@ -39,18 +40,35 @@ export class TextureRepository {
   ) {}
 
   async getWorkspace(modelId: string): Promise<TextureWorkspaceSummary> {
-    const model = await this.database.models.get(modelId)
-    if (!model) throw new AppError('MODEL_NOT_FOUND', 'This model is no longer available in the project.')
-    const [materials, assets, bindings] = await Promise.all([
-      this.database.materials.where('projectId').equals(model.projectId).toArray(),
-      this.database.textureAssets.where('projectId').equals(model.projectId).toArray(),
-      this.database.textureBindings.where('modelId').equals(modelId).toArray(),
-    ])
-    return {
-      materials: materials.map(cloneMaterial).sort((a, b) => a.createdAt - b.createdAt),
-      assets: assets.map(cloneAsset).sort((a, b) => a.createdAt - b.createdAt),
-      bindings: bindings.map(cloneBinding).sort((a, b) => a.updatedAt - b.updatedAt),
-    }
+    return this.database.transaction(
+      'rw',
+      [this.database.models, this.database.materials, this.database.textureAssets, this.database.textureBindings],
+      async () => {
+        const model = await this.database.models.get(modelId)
+        if (!model) throw new AppError('MODEL_NOT_FOUND', 'This model is no longer available in the project.')
+        const [materials, assets, bindings] = await Promise.all([
+          this.database.materials.where('projectId').equals(model.projectId).toArray(),
+          this.database.textureAssets.where('projectId').equals(model.projectId).toArray(),
+          this.database.textureBindings.where('modelId').equals(modelId).toArray(),
+        ])
+        const materialsById = new Map(materials.map((material) => [material.id, material]))
+        const assetsById = new Map(assets.map((asset) => [asset.id, asset]))
+        const repairedAt = Date.now()
+        const normalizedBindings = bindings.map((binding) => {
+          const material = materialsById.get(binding.materialId)
+          const asset = material?.textureAssetId ? assetsById.get(material.textureAssetId) : undefined
+          const uv = normalizeUvRect(binding.uv, asset?.width ?? 16, asset?.height ?? 16, 0.25)
+          return uvRectsEqual(binding.uv, uv) ? binding : { ...binding, uv, updatedAt: repairedAt }
+        })
+        const repaired = normalizedBindings.filter((binding, index) => binding !== bindings[index])
+        if (repaired.length) await this.database.textureBindings.bulkPut(repaired)
+        return {
+          materials: materials.map(cloneMaterial).sort((a, b) => a.createdAt - b.createdAt),
+          assets: assets.map(cloneAsset).sort((a, b) => a.createdAt - b.createdAt),
+          bindings: normalizedBindings.map(cloneBinding).sort((a, b) => a.updatedAt - b.updatedAt),
+        }
+      },
+    )
   }
 
   async listMaterials(projectId: string): Promise<StudioMaterial[]> {
@@ -149,17 +167,34 @@ export class TextureRepository {
     try {
       return await this.database.transaction(
         'rw',
-        [this.database.materials, this.database.textureAssets],
+        [this.database.materials, this.database.textureAssets, this.database.textureBindings],
         async () => {
-          const previousAssetId = material.textureAssetId
+          const currentMaterial = await this.database.materials.get(materialId)
+          if (!currentMaterial) {
+            throw new AppError('MATERIAL_FAILED', 'This material is no longer available.')
+          }
+          const previousAssetId = currentMaterial.textureAssetId
           const savedMaterial: StudioMaterial = {
-            ...material,
+            ...currentMaterial,
             textureAssetId: asset.id,
             updatedAt: now,
-            revision: material.revision + 1,
+            revision: currentMaterial.revision + 1,
           }
           await this.database.textureAssets.add(asset)
           await this.database.materials.put(savedMaterial)
+          const existingBindings = await this.database.textureBindings
+            .where('materialId')
+            .equals(currentMaterial.id)
+            .toArray()
+          const normalizedBindings = existingBindings.flatMap((binding) => {
+            const uv = normalizeUvRect(binding.uv, asset.width, asset.height, 0.25)
+            return uvRectsEqual(binding.uv, uv)
+              ? []
+              : [{ ...binding, uv, updatedAt: now }]
+          })
+          if (normalizedBindings.length) {
+            await this.database.textureBindings.bulkPut(normalizedBindings)
+          }
           if (previousAssetId && previousAssetId !== asset.id) {
             await this.database.textureAssets.delete(previousAssetId)
           }
@@ -188,7 +223,33 @@ export class TextureRepository {
       height: Math.round(height),
       updatedAt: Date.now(),
     }
-    await this.database.textureAssets.put(saved)
+    await this.database.transaction(
+      'rw',
+      [this.database.textureAssets, this.database.materials, this.database.textureBindings],
+      async () => {
+        await this.database.textureAssets.put(saved)
+        const linkedMaterials = await this.database.materials
+          .where('projectId')
+          .equals(existing.projectId)
+          .filter((material) => material.textureAssetId === assetId)
+          .toArray()
+        if (!linkedMaterials.length) return
+        const materialIds = new Set(linkedMaterials.map((material) => material.id))
+        const bindings = await this.database.textureBindings
+          .where('projectId')
+          .equals(existing.projectId)
+          .filter((binding) => materialIds.has(binding.materialId))
+          .toArray()
+        const now = Date.now()
+        const normalized = bindings.flatMap((binding) => {
+          const uv = normalizeUvRect(binding.uv, saved.width, saved.height, 0.25)
+          return uvRectsEqual(binding.uv, uv)
+            ? []
+            : [{ ...binding, uv, updatedAt: now }]
+        })
+        if (normalized.length) await this.database.textureBindings.bulkPut(normalized)
+      },
+    )
     return cloneAsset(saved)
   }
 
@@ -201,45 +262,77 @@ export class TextureRepository {
     textureWidth: number
     textureHeight: number
   }): Promise<StudioTextureBinding> {
-    const [model, material] = await Promise.all([
-      this.database.models.get(input.modelId),
-      this.database.materials.get(input.materialId),
-    ])
-    if (!model || model.projectId !== input.projectId) {
-      throw new AppError('MODEL_NOT_FOUND', 'This model is no longer available in the project.')
-    }
-    if (!model.elements.some((cube) => cube.id === input.cubeId)) {
-      throw new AppError('MATERIAL_FAILED', 'The selected cube is no longer available.')
-    }
-    if (!material || material.projectId !== input.projectId) {
-      throw new AppError('MATERIAL_FAILED', 'The selected material is not available in this project.')
-    }
-    const existing = await this.database.textureBindings
-      .where('[modelId+cubeId]')
-      .equals([input.modelId, input.cubeId])
-      .filter((binding) => binding.face === input.face)
-      .first()
-    const now = Date.now()
-    const binding: StudioTextureBinding = {
-      id: existing?.id ?? createId(),
-      projectId: input.projectId,
-      modelId: input.modelId,
-      cubeId: input.cubeId,
-      face: input.face,
-      materialId: input.materialId,
-      uv: existing?.uv ?? {
-        x: 0,
-        y: 0,
-        width: Math.max(1, input.textureWidth),
-        height: Math.max(1, input.textureHeight),
-        rotation: 0,
-        flipHorizontal: false,
-        flipVertical: false,
+    const [binding] = await this.saveFaceBindings({
+      ...input,
+      faces: [input.face],
+    })
+    return binding!
+  }
+
+  async saveFaceBindings(input: {
+    projectId: string
+    modelId: string
+    cubeId: string
+    faces: readonly TextureFace[]
+    materialId: string
+    textureWidth: number
+    textureHeight: number
+  }): Promise<StudioTextureBinding[]> {
+    const requestedFaces = [...new Set(input.faces)]
+    if (!requestedFaces.length) return []
+    return this.database.transaction(
+      'rw',
+      [this.database.models, this.database.materials, this.database.textureBindings],
+      async () => {
+        const [model, material, currentBindings] = await Promise.all([
+          this.database.models.get(input.modelId),
+          this.database.materials.get(input.materialId),
+          this.database.textureBindings
+            .where('[modelId+cubeId]')
+            .equals([input.modelId, input.cubeId])
+            .toArray(),
+        ])
+        if (!model || model.projectId !== input.projectId) {
+          throw new AppError('MODEL_NOT_FOUND', 'This model is no longer available in the project.')
+        }
+        if (!model.elements.some((cube) => cube.id === input.cubeId)) {
+          throw new AppError('MATERIAL_FAILED', 'The selected cube is no longer available.')
+        }
+        if (!material || material.projectId !== input.projectId) {
+          throw new AppError('MATERIAL_FAILED', 'The selected material is not available in this project.')
+        }
+        const now = Date.now()
+        const byFace = new Map(currentBindings.map((binding) => [binding.face, binding]))
+        const saved = requestedFaces.map((face) => {
+          const existing = byFace.get(face)
+          const uv = normalizeUvRect(existing?.uv ?? {
+            x: 0,
+            y: 0,
+            width: input.textureWidth,
+            height: input.textureHeight,
+            rotation: 0,
+            flipHorizontal: false,
+            flipVertical: false,
+          }, input.textureWidth, input.textureHeight, 0.25)
+          if (existing && existing.materialId === input.materialId && uvRectsEqual(existing.uv, uv)) {
+            return existing
+          }
+          return {
+            id: existing?.id ?? createId(),
+            projectId: input.projectId,
+            modelId: input.modelId,
+            cubeId: input.cubeId,
+            face,
+            materialId: input.materialId,
+            uv,
+            updatedAt: now,
+          }
+        })
+        const changed = saved.filter((binding) => binding !== byFace.get(binding.face))
+        if (changed.length) await this.database.textureBindings.bulkPut(changed)
+        return saved.map(cloneBinding)
       },
-      updatedAt: now,
-    }
-    await this.database.textureBindings.put(binding)
-    return cloneBinding(binding)
+    )
   }
 
   async deleteMaterial(materialId: string): Promise<void> {

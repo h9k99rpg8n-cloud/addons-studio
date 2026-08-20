@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the Addons Studio Alpha `0.0.3.6.3` architecture after the first-generation Model Core stabilization. Texture Core, Animation Core, and complete Bedrock add-on export are still future systems.
+This document describes Addons Studio Alpha `0.0.4.3` after the first-generation Texture Core stabilization. Model Core and Texture Core are implemented as separate domains; the future Materials Core, Animation Core, and complete Bedrock add-on export remain out of scope.
 
 ## Application layers
 
@@ -14,9 +14,11 @@ This document describes the Addons Studio Alpha `0.0.3.6.3` architecture after t
 | `src/core/icons` | Typed original Addons Studio product-icon registry |
 | `src/core/project` | Project rules, version registry, persistence scheduling, and resource templates |
 | `src/core/model` | Model domain, transforms, hierarchy, Inflate math, folders, productivity operations, validation, persistence, history, and portability |
+| `src/core/texture` | Project materials, texture-asset persistence, UV normalization/batching, and independently testable Paint pixel operations |
 | `src/core/i18n` | English-source / Spanish message catalog that never rewrites technical IDs |
 | `src/core/productivity` | Opt-in local Developer Beta timers, routine, and usage records |
 | `src/features/model-studio` | Model Studio product UI and its isolated 3D runtime modules |
+| `src/features/texture-core` | Texture Core orchestration, UV workspace, Paint canvas, material library, and isolated textured preview runtime |
 | `src/core/storage` | Dexie schema and lightweight preferences |
 | `src/core/history` | Recovery-snapshot service boundary |
 | `src/core/validation` | Stored-schema compatibility checks |
@@ -115,7 +117,35 @@ The primary viewport caps device pixel ratio. The secondary split viewport uses 
 
 Untextured cuboids use an original Addons Studio editor-only pixel-inspired preview. A tiny generated `DataTexture` uses nearest-neighbor sampling and muted material variants to distinguish adjacent cuboids while clearly remaining a temporary editor visualization.
 
-The preview is not a Minecraft texture and is never exported as one. Future Texture Core integration will replace the preview at render time when a real material/texture binding exists.
+The preview is not a Minecraft texture and is never exported as one. Texture Core owns real project texture assets and uses a separate lightweight textured preview; Model Studio remains independent from Texture Core's authoring runtime.
+
+## Texture Core domain
+
+Texture Core deliberately does not put binary images or per-face UV authoring data inside `StudioModel`.
+
+| Record | Ownership | Purpose |
+| --- | --- | --- |
+| `StudioMaterial` | Project | Reusable named material reference and optional texture-asset link |
+| `StudioTextureAsset` | Project | Immutable PNG/JPEG Blob, dimensions, MIME type, and timestamps |
+| `StudioTextureBinding` | Model + cube + face | Model-specific material assignment and normalized UV rectangle |
+
+This separation allows one material to be reused by several models while their face bindings remain independent. Deleting a model removes only its bindings. Deleting a project removes all three record types transactionally. Project duplication remaps model, cube, material, asset, and binding IDs without sharing mutable records.
+
+`TextureRepository` is the storage boundary. It validates project/model/material ownership, assigns several faces in one transaction, repairs non-finite or out-of-atlas legacy UV values on read, and normalizes linked bindings when an atlas is replaced with different dimensions. Existing database schema version 4 remains unchanged in 0.0.4.3.
+
+## Texture Core UI boundaries
+
+`TextureCoreView.vue` remains an orchestrator. It loads a model workspace, coordinates selected cube/face/material state, flushes editors during navigation, and serializes asynchronous UV persistence per binding. It does not implement pixel algorithms or own Three.js scene objects.
+
+Focused components and services own the editor runtimes:
+
+- `TextureUvWorkspace.vue` owns visual UV island gestures and command controls. Every draft/final rectangle passes through `normalizeUvRect`; rotation/flip markers do not rotate the island's bounded DOM footprint.
+- `textureUvService.ts` owns finite values, atlas clamping, 0.25/0.5/1/2/4 px precision, decimal Auto Box UV, no-op detection, and atomic batch updates.
+- `TexturePaintCanvas.vue` owns Canvas lifecycle, pointer capture, the touch deadzone, pinch/pan arbitration, autosave/flush, and a non-reactive 64-step history.
+- `texturePaintService.ts` owns pure Paint operations: snapshot equality, history deduplication, exact mirrored brush pixels, continuous lines, rectangle outlines, flood fill, and exact RGBA replacement.
+- `TextureModelPreview.vue` owns its low-power Three.js scene, raycasting, camera fit, nearest-neighbor texture map, and teardown. Scene, camera, renderer, controls, meshes, materials, and textures are ordinary TypeScript variables outside deep Vue reactivity.
+
+UV commits use one event channel. The orchestrator coalesces rapid drafts by binding ID, captures the atlas dimensions/precision used by the gesture, skips already-persisted values, and flushes pending work before destructive context changes. Paint persistence includes the source texture asset ID so an asynchronous save cannot target a newly selected material.
 
 ## Background / Guide
 
@@ -127,9 +157,9 @@ Persistent editor images live as Blob records in IndexedDB. Runtime object URLs 
 
 ## Project persistence
 
-`AddonsStudioDatabase` keeps project metadata, recovery snapshots, project folders, models, editor assets, and migration-compatible legacy reference records in IndexedDB. Project creation, duplication, deletion, and package import use transactions where data integrity requires them.
+`AddonsStudioDatabase` keeps project metadata, recovery snapshots, project folders, models, editor assets, migration-compatible legacy reference records, materials, texture assets, and texture bindings in IndexedDB. Project creation, duplication, and deletion use transactions where data integrity requires them.
 
-Model autosave remains debounced and flushes on editor exit/page hide. The `0.0.3.6.3` runtime refactor does not reset IndexedDB or replace the stored model schema merely to reorganize rendering code.
+Model autosave remains debounced and flushes on editor exit/page hide. Texture Paint autosaves after an idle debounce and flushes on editor/mode/route/page changes. The `0.0.4.3` stabilization update does not reset IndexedDB or add a destructive migration.
 
 ## Portability
 
@@ -137,13 +167,13 @@ Canonical `.model.json` export remains a versioned Addons Studio model document 
 
 JSON import continues through explicit format detection and adapters rather than treating arbitrary JSON as a model.
 
-The beta `.addonsstudio` project package remains a versioned ZIP container with transactional import, ID remapping, model/editor records, binary editor assets, and duplicate-project protection.
+The beta `.addonsstudio` project package remains a versioned ZIP container with transactional import, ID remapping, model/editor records, binary editor assets, and duplicate-project protection. Its current portable contract still predates Texture Core, so local materials/textures/bindings are not yet included in that beta package; local IndexedDB persistence and local project duplication do include them.
 
 ## Localization and mobile UI
 
 English remains the source language and Spanish is officially supported. Identifiers, namespaces, JSON keys, and file extensions never change with UI language.
 
-Interactive Model Studio text/number fields retain an effective 16 CSS-pixel size where required to avoid iPhone Safari focus zoom. Product interaction targets continue to follow the project's mobile touch-target standard.
+Interactive Model Studio and Texture Core editable controls retain an effective 16 CSS-pixel size where required to avoid iPhone Safari focus zoom. Product interaction targets continue to follow the project's approximately 44 CSS-pixel mobile touch-target standard.
 
 ## Future engine boundaries
 
@@ -161,6 +191,6 @@ packages/
   addon-builder/
 ```
 
-Alpha `0.0.3.6.3` prepares the Model Core boundary but does not pretend those future packages already exist.
+Alpha `0.0.4.3` preserves the Model/Texture boundary but does not pretend those future packages already exist.
 
-The next major product branch is planned as Alpha `0.0.4` — Texture Core. Model Core should be consumed by that engine rather than rewritten by it.
+The next major product phase is Materials. It should consume the stabilized project material/texture contracts rather than coupling material authoring back into Model Core or the Texture Core renderer.

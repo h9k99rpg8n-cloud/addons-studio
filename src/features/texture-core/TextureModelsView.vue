@@ -57,7 +57,7 @@ onMounted(async () => {
         <strong>{{ locale.t('Texture Core') }}</strong>
         <small>{{ project?.name ?? locale.t('Project') }}</small>
       </div>
-      <span class="core-badge">0.1</span>
+      <span class="core-badge">0.2</span>
     </header>
 
     <section v-if="loading" class="content model-grid" :aria-label="locale.t('Loading models')">
@@ -75,7 +75,7 @@ onMounted(async () => {
       <section class="texture-intro">
         <span class="icon-surface"><StudioIcon name="material" :size="32" /></span>
         <div>
-          <p class="eyebrow">{{ locale.t('Texture Core 0.1') }}</p>
+          <p class="eyebrow">{{ locale.t('Texture Core 0.2') }}</p>
           <h1>{{ locale.t('Give your models a material') }}</h1>
           <p>{{ locale.t('Choose a Model Core resource, import or create a material, edit pixels, and prepare UV assignments without changing geometry.') }}</p>
         </div>

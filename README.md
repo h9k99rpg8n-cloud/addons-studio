@@ -2,15 +2,32 @@
 
 Addons Studio is a free and open-source, mobile-first web application for creating Minecraft Bedrock Edition add-ons. The long-term goal is a complete creative environment that works directly from a phone, tablet, or desktop browser without assuming a mouse or desktop filesystem.
 
-> **Current release:** Alpha `0.0.3.6.3` · Model Core Architecture & Stabilization
+> **Current release:** Alpha `0.0.4.3` · Texture Core Stability Update
 
 Addons Studio is an independent community project and is not affiliated with Mojang Studios or Microsoft. Minecraft is a trademark of Microsoft Corporation.
 
-## Alpha 0.0.3.6.3
+## Alpha 0.0.4.3
 
-This release stabilizes the first-generation Model Core after Snapshot 3. It is primarily an architecture, performance, mobile-input, cleanup, and regression-fixing release rather than another large modeling-feature drop.
+This release closes the first Texture Core development era with a focused stability, mobile-input, performance, persistence, and regression-fixing pass. It deliberately adds no large creative system before the Materials phase.
 
-### Model Core
+### Texture Core
+
+- Project-scoped reusable materials with locally persisted PNG/JPEG texture assets and model-specific face bindings.
+- UV 2.0 visual atlas editing, synchronized cube/face selection, multi-face selection, Auto Box UV, 0.25/0.5/1/2/4 px precision, Copy/Paste, Rotate, Flip, Fit, and Reset.
+- Paint 2.0 Pencil, Eraser, Fill, Eyedropper, Line, Rectangle, Replace Color, opacity, pixel grid, exact X/Y mirroring, 64-step deduplicated history, pinch zoom, and two-finger pan.
+- Lightweight Three.js textured-cuboid preview with face raycasting, selected-face feedback, model fitting, nearest-neighbor filtering, and on-demand rendering.
+- Transactional IndexedDB storage for materials, immutable texture blobs, and per-face UV bindings without embedding binary data in model JSON.
+
+### Stability work
+
+- UV rectangles are normalized against the active atlas after every gesture or command; non-finite legacy values and texture-size changes repair safely without a destructive database migration.
+- UV writes are coalesced per binding, unchanged records are skipped, multi-face assignment is atomic, and navigation waits for pending UV/Paint persistence.
+- Fast Paint strokes use coalesced pointer samples plus pixel-line interpolation, while a touch deadzone prevents taps and pinch gestures from creating accidental marks.
+- Paint persistence targets the exact source texture asset even when the user switches cube, face, material, model, or mode quickly.
+- Safari pointer capture/cancellation, safe areas, 16 px editable controls, 44 px touch targets, landscape sizing, overflow, context menus, and page-scroll conflicts received focused hardening.
+- Project/model deletion and project duplication now preserve the ownership rules for project materials, texture assets, and model-specific bindings.
+
+### Preserved Model Core
 
 - Lazy-loaded Three.js Model Studio with a Bedrock-unit grid, lighting, standard camera views, one/two viewport layouts, temporary maximize, and lower-power secondary rendering.
 - Multiple cuboids with exact transforms, custom Addons Studio Move/Rotate/Resize/Pivot gizmos, adaptive screen-space gizmo sizing, and larger invisible finger hit targets.
@@ -19,7 +36,7 @@ This release stabilizes the first-generation Model Core after Snapshot 3. It is 
 - Global / Local / Parent transform spaces and independent Move/Resize/Rotate precision.
 - Multi-selection, structural Groups, organizational Model Folders, pivots, visibility, locking, isolation, Mirror, Align, Distribute, Duplicate, Duplicate Again, and Inflate fitting.
 - Command-based undo/redo and debounced model autosave.
-- Original Studio Preview Material 2.0 for clearer untextured cuboids.
+- Original Studio Preview Material 2.0 for untextured cuboids; Texture Core owns real texture authoring and its isolated preview.
 - Background / Guide workflow with Dark Studio, Sky, Night, Sunset, Snow, custom backgrounds, and viewport-aligned PNG/JPG modeling guides.
 - Canonical validated Addons Studio `.model.json` export and adapter-based import for Studio JSON and compatible Minecraft Bedrock geometry JSON.
 
@@ -59,13 +76,13 @@ Primary targets are iPhone/Safari, Android/Chrome, iPad, Android tablets, and in
 
 ## Not implemented yet
 
-Alpha `0.0.3.6.3` does **not** implement Texture Core, UV editing, texture painting, real material assignment, Animation Core, bones, particles, audio editing, visual logic, or complete `.mcpack` / `.mcaddon` generation.
+Alpha `0.0.4.3` does **not** implement the future Materials Core, advanced mesh/vertex UV editing, layers or selection tools in Paint, Animation Core, bones, particles, audio editing, visual logic, or complete `.mcpack` / `.mcaddon` generation.
 
-The next major development line is planned as **Alpha `0.0.4` — Texture Core** after Model Core stabilization is accepted.
+The next major development phase is **Materials**. Alpha 0.0.4.3 intentionally does not start it.
 
 ## Mobile-first principles
 
-The product architecture avoids desktop-only filesystem assumptions. Project metadata, folders, internal models, and editor-image blobs are stored in IndexedDB because the File System Access API is not consistently available on mobile Safari. Runtime object URLs are recreated when Model Studio opens and revoked when assets leave the session; they are never treated as persistent identifiers.
+The product architecture avoids desktop-only filesystem assumptions. Project metadata, folders, internal models, editor-image blobs, materials, texture assets, and UV bindings are stored in IndexedDB because the File System Access API is not consistently available on mobile Safari. Runtime object URLs are recreated for the active editor and revoked when assets leave the session; they are never treated as persistent identifiers.
 
 ## Technology
 
@@ -80,7 +97,7 @@ The product architecture avoids desktop-only filesystem assumptions. Project met
 - Lucide for generic interface actions plus an original Addons Studio SVG product-icon family
 - Vitest + fake IndexedDB
 
-See [Architecture](docs/ARCHITECTURE.md), [Brand system](docs/BRAND.md), [0.0.3.6.3 release notes](docs/releases/0.0.3.6.3.md), and [Third-party notices](THIRD_PARTY_NOTICES.md).
+See [Architecture](docs/ARCHITECTURE.md), [Brand system](docs/BRAND.md), [0.0.4.3 release notes](docs/releases/0.0.4.3.md), and [Third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## Development
 

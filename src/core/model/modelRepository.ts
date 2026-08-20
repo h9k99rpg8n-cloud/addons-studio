@@ -138,11 +138,13 @@ export class ModelRepository {
           this.database.models,
           this.database.modelReferenceAssets,
           this.database.modelEditorAssets,
+          this.database.textureBindings,
         ],
         async () => {
           await this.database.models.delete(id)
           await this.database.modelReferenceAssets.where('modelId').equals(id).delete()
           await this.database.modelEditorAssets.where('modelId').equals(id).delete()
+          await this.database.textureBindings.where('modelId').equals(id).delete()
         },
       )
     } catch (error) {

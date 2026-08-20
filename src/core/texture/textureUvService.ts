@@ -6,17 +6,37 @@ import type { StudioTextureBinding, StudioUvRect, TextureFace, UvPrecision } fro
 const rotations = [0, 90, 180, 270] as const
 const supportedPrecisions: readonly UvPrecision[] = [0.25, 0.5, 1, 2, 4]
 const faces: readonly TextureFace[] = ['north', 'south', 'east', 'west', 'up', 'down']
+const UV_EPSILON = 1e-6
 
 function normalizePrecision(value: number): UvPrecision {
   return supportedPrecisions.includes(value as UvPrecision) ? value as UvPrecision : 1
 }
 
 function snap(value: number, precision: UvPrecision): number {
-  return Math.round(value / precision) * precision
+  const snapped = Math.round(value / precision) * precision
+  return Math.round(snapped * 1_000_000) / 1_000_000
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value))
+}
+
+function finiteNumber(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback
+}
+
+function atlasDimension(value: number): number {
+  return Number.isFinite(value) && value > 0 ? value : 1
+}
+
+export function uvRectsEqual(left: StudioUvRect, right: StudioUvRect): boolean {
+  return Math.abs(left.x - right.x) < UV_EPSILON
+    && Math.abs(left.y - right.y) < UV_EPSILON
+    && Math.abs(left.width - right.width) < UV_EPSILON
+    && Math.abs(left.height - right.height) < UV_EPSILON
+    && left.rotation === right.rotation
+    && left.flipHorizontal === right.flipHorizontal
+    && left.flipVertical === right.flipVertical
 }
 
 export function normalizeUvRect(
@@ -26,12 +46,30 @@ export function normalizeUvRect(
   requestedPrecision: UvPrecision = 1,
 ): StudioUvRect {
   const precision = normalizePrecision(requestedPrecision)
-  const maxWidth = Math.max(1, Number(textureWidth) || 1)
-  const maxHeight = Math.max(1, Number(textureHeight) || 1)
-  const width = clamp(snap(Math.max(precision, uv.width), precision), precision, maxWidth)
-  const height = clamp(snap(Math.max(precision, uv.height), precision), precision, maxHeight)
-  const x = clamp(snap(uv.x, precision), 0, Math.max(0, maxWidth - width))
-  const y = clamp(snap(uv.y, precision), 0, Math.max(0, maxHeight - height))
+  const maxWidth = atlasDimension(textureWidth)
+  const maxHeight = atlasDimension(textureHeight)
+  const minimumWidth = Math.min(precision, maxWidth)
+  const minimumHeight = Math.min(precision, maxHeight)
+  const width = clamp(
+    snap(Math.max(minimumWidth, finiteNumber(uv.width, minimumWidth)), precision),
+    minimumWidth,
+    maxWidth,
+  )
+  const height = clamp(
+    snap(Math.max(minimumHeight, finiteNumber(uv.height, minimumHeight)), precision),
+    minimumHeight,
+    maxHeight,
+  )
+  const x = clamp(
+    snap(finiteNumber(uv.x, 0), precision),
+    0,
+    Math.max(0, maxWidth - width),
+  )
+  const y = clamp(
+    snap(finiteNumber(uv.y, 0), precision),
+    0,
+    Math.max(0, maxHeight - height),
+  )
   const rotation = rotations.includes(uv.rotation) ? uv.rotation : 0
   return {
     x,
@@ -51,6 +89,7 @@ function makeRect(
   height: number,
   textureWidth: number,
   textureHeight: number,
+  precision: UvPrecision = 0.25,
 ): StudioUvRect {
   return normalizeUvRect({
     x,
@@ -60,7 +99,7 @@ function makeRect(
     rotation: 0,
     flipHorizontal: false,
     flipVertical: false,
-  }, textureWidth, textureHeight, 1)
+  }, textureWidth, textureHeight, precision)
 }
 
 /**
@@ -72,15 +111,21 @@ export function createBoxUvLayout(
   textureWidth: number,
   textureHeight: number,
 ): Record<TextureFace, StudioUvRect> {
-  const sx = Math.max(1, Math.abs(size.x))
-  const sy = Math.max(1, Math.abs(size.y))
-  const sz = Math.max(1, Math.abs(size.z))
+  const minimum = 0.25
+  const sx = Math.max(minimum, Math.abs(finiteNumber(size.x, minimum)))
+  const sy = Math.max(minimum, Math.abs(finiteNumber(size.y, minimum)))
+  const sz = Math.max(minimum, Math.abs(finiteNumber(size.z, minimum)))
   const rawWidth = Math.max(1, 2 * (sx + sz))
   const rawHeight = Math.max(1, sy + 2 * sz)
-  const scale = Math.min(1, Math.max(0.01, Math.min(textureWidth / rawWidth, textureHeight / rawHeight)))
-  const x = Math.max(1, sx * scale)
-  const y = Math.max(1, sy * scale)
-  const z = Math.max(1, sz * scale)
+  const availableWidth = atlasDimension(textureWidth)
+  const availableHeight = atlasDimension(textureHeight)
+  const scale = Math.min(1, Math.max(0.000_001, Math.min(
+    availableWidth / rawWidth,
+    availableHeight / rawHeight,
+  )))
+  const x = Math.max(minimum, sx * scale)
+  const y = Math.max(minimum, sy * scale)
+  const z = Math.max(minimum, sz * scale)
 
   return {
     west: makeRect(0, z, z, y, textureWidth, textureHeight),
@@ -114,15 +159,19 @@ export class TextureUvService {
     textureHeight: number,
     precision: UvPrecision = 1,
   ): Promise<StudioTextureBinding> {
-    const binding = await this.database.textureBindings.get(bindingId)
-    if (!binding) throw new AppError('MATERIAL_FAILED', 'This UV binding is no longer available.')
-    const saved: StudioTextureBinding = {
-      ...binding,
-      uv: normalizeUvRect(uv, textureWidth, textureHeight, precision),
-      updatedAt: Date.now(),
-    }
-    await this.database.textureBindings.put(saved)
-    return { ...saved, uv: { ...saved.uv } }
+    return this.database.transaction('rw', this.database.textureBindings, async () => {
+      const binding = await this.database.textureBindings.get(bindingId)
+      if (!binding) throw new AppError('MATERIAL_FAILED', 'This UV binding is no longer available.')
+      const normalized = normalizeUvRect(uv, textureWidth, textureHeight, precision)
+      if (uvRectsEqual(binding.uv, normalized)) return { ...binding, uv: { ...binding.uv } }
+      const saved: StudioTextureBinding = {
+        ...binding,
+        uv: normalized,
+        updatedAt: Date.now(),
+      }
+      await this.database.textureBindings.put(saved)
+      return { ...saved, uv: { ...saved.uv } }
+    })
   }
 
   async updateManyBindingsUv(
@@ -142,13 +191,21 @@ export class TextureUvService {
       const now = Date.now()
       const saved = existing.map((binding) => {
         const current = binding!
+        const uv = normalizeUvRect(
+          byId.get(current.id) ?? current.uv,
+          textureWidth,
+          textureHeight,
+          precision,
+        )
+        if (uvRectsEqual(current.uv, uv)) return current
         return {
           ...current,
-          uv: normalizeUvRect(byId.get(current.id) ?? current.uv, textureWidth, textureHeight, precision),
+          uv,
           updatedAt: now,
         }
       })
-      await this.database.textureBindings.bulkPut(saved)
+      const changed = saved.filter((entry, index) => entry !== existing[index])
+      if (changed.length) await this.database.textureBindings.bulkPut(changed)
       return saved.map((entry) => ({ ...entry, uv: { ...entry.uv } }))
     })
   }
@@ -174,7 +231,7 @@ export class TextureUvService {
       faces.map((face) => ({ bindingId: byFace.get(face)!.id, uv: layout[face] })),
       textureWidth,
       textureHeight,
-      1,
+      0.25,
     )
   }
 }

@@ -18,7 +18,7 @@ const locale = useLocaleStore()
     <AppHeader :title="locale.t('Release Notes')" subtitle="Addons Studio">
       <template #leading><IconButton icon="arrow-left" :label="locale.t('Back')" @click="router.back()" /></template>
     </AppHeader>
-    <section class="release-brand"><BrandMark :size="64" /><div><h1>{{ locale.t('What’s New') }}</h1><p>{{ locale.t('Model Core release history') }}</p></div></section>
+    <section class="release-brand"><BrandMark :size="64" /><div><h1>{{ locale.t('What’s New') }}</h1><p>{{ locale.t('Addons Studio release history') }}</p></div></section>
     <article v-for="(release, index) in RELEASE_NOTES" :key="release.version" class="release-card">
       <header><div><small>Alpha {{ release.version }}</small><h2>{{ locale.t(release.title) }}</h2></div><AppBadge v-if="index === 0" tone="accent">{{ locale.t('Current') }}</AppBadge></header>
       <p>{{ locale.t(release.subtitle) }}</p>

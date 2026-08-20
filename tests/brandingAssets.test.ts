@@ -3,7 +3,8 @@ import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { APP_RELEASE_LABEL, APP_VERSION } from '@/core/app/release'
+import { APP_RELEASE_LABEL, APP_RELEASE_NAME, APP_VERSION } from '@/core/app/release'
+import { CURRENT_RELEASE_NOTE } from '@/core/app/releaseNotes'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -24,6 +25,12 @@ describe('release metadata and branding assets', () => {
     expect(packageJson.version).toBe('0.0.4-alpha.3')
     expect(APP_VERSION).toBe('0.0.4.3')
     expect(APP_RELEASE_LABEL).toBe('Alpha 0.0.4.3')
+    expect(APP_RELEASE_NAME).toBe('Texture Core Stability Update')
+    expect(CURRENT_RELEASE_NOTE).toMatchObject({
+      version: '0.0.4.3',
+      title: 'Texture Core Stabilized',
+      subtitle: 'Stability, Mobile Polish & Bug Fixes',
+    })
   })
 
   it.each([

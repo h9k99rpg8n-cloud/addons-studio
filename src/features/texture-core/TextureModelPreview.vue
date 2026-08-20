@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 
-import { elementCenter } from '@/core/model/modelHierarchy'
+import { elementCenter, isNodeEffectivelyVisible } from '@/core/model/modelHierarchy'
 import type { StudioModel } from '@/types/model'
 import type { StudioTextureAsset, TextureFace } from '@/types/texture'
 
@@ -26,10 +26,16 @@ let camera: THREE.PerspectiveCamera | undefined
 let controls: OrbitControls | undefined
 let observer: ResizeObserver | undefined
 let textureMap: THREE.Texture | undefined
-let objectUrl: string | undefined
 let pointerStart: { id: number; x: number; y: number } | undefined
+let textureLoadGeneration = 0
 const meshes: THREE.Mesh[] = []
 const ownedMaterials: THREE.MeshStandardMaterial[] = []
+let materialSet: {
+  base: THREE.MeshStandardMaterial
+  cube: THREE.MeshStandardMaterial
+  face: THREE.MeshStandardMaterial
+} | undefined
+const activePointers = new Set<number>()
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
 
@@ -41,6 +47,7 @@ function render(): void {
 
 function disposeMaterials(): void {
   ownedMaterials.splice(0).forEach((entry) => entry.dispose())
+  materialSet = undefined
 }
 
 function disposeMeshes(): void {
@@ -52,23 +59,28 @@ function disposeMeshes(): void {
   disposeMaterials()
 }
 
-function disposeTextureUrl(): void {
-  if (objectUrl) URL.revokeObjectURL(objectUrl)
-  objectUrl = undefined
-}
-
-async function loadTexture(): Promise<void> {
+async function loadTexture(): Promise<boolean> {
+  const generation = ++textureLoadGeneration
   textureMap?.dispose()
   textureMap = undefined
-  disposeTextureUrl()
-  if (!props.texture) return
-  objectUrl = URL.createObjectURL(props.texture.blob)
-  textureMap = await new THREE.TextureLoader().loadAsync(objectUrl)
-  textureMap.magFilter = THREE.NearestFilter
-  textureMap.minFilter = THREE.NearestFilter
-  textureMap.colorSpace = THREE.SRGBColorSpace
-  textureMap.generateMipmaps = false
-  textureMap.needsUpdate = true
+  if (!props.texture) return true
+  const objectUrl = URL.createObjectURL(props.texture.blob)
+  try {
+    const loaded = await new THREE.TextureLoader().loadAsync(objectUrl)
+    if (generation !== textureLoadGeneration) {
+      loaded.dispose()
+      return false
+    }
+    loaded.magFilter = THREE.NearestFilter
+    loaded.minFilter = THREE.NearestFilter
+    loaded.colorSpace = THREE.SRGBColorSpace
+    loaded.generateMipmaps = false
+    loaded.needsUpdate = true
+    textureMap = loaded
+    return true
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
 }
 
 function createFaceMaterial(selected: boolean, selectedCube: boolean): THREE.MeshStandardMaterial {
@@ -85,19 +97,25 @@ function createFaceMaterial(selected: boolean, selectedCube: boolean): THREE.Mes
 }
 
 function materialsForCube(cubeId: string): THREE.MeshStandardMaterial[] {
+  materialSet ??= {
+    base: createFaceMaterial(false, false),
+    cube: createFaceMaterial(false, true),
+    face: createFaceMaterial(true, true),
+  }
   const selectedCube = cubeId === props.selectedCubeId
-  return materialIndexToFace.map((face) => createFaceMaterial(
-    selectedCube && face === props.selectedFace,
-    selectedCube,
-  ))
+  return materialIndexToFace.map((face) => selectedCube && face === props.selectedFace
+    ? materialSet!.face
+    : selectedCube
+      ? materialSet!.cube
+      : materialSet!.base)
 }
 
 function modelBounds(): THREE.Box3 {
   const bounds = new THREE.Box3()
-  for (const cube of props.model.elements) {
-    const center = elementCenter(cube)
-    bounds.expandByPoint(new THREE.Vector3(center.x - cube.size.x / 2, center.y - cube.size.y / 2, center.z - cube.size.z / 2))
-    bounds.expandByPoint(new THREE.Vector3(center.x + cube.size.x / 2, center.y + cube.size.y / 2, center.z + cube.size.z / 2))
+  for (const mesh of meshes) {
+    if (!mesh.visible) continue
+    mesh.updateMatrixWorld(true)
+    bounds.expandByObject(mesh, true)
   }
   if (bounds.isEmpty()) bounds.setFromCenterAndSize(new THREE.Vector3(), new THREE.Vector3(1, 1, 1))
   return bounds
@@ -137,6 +155,7 @@ function rebuildMeshes(fit = false): void {
       THREE.MathUtils.degToRad(cube.rotation.z),
     )
     mesh.userData.cubeId = cube.id
+    mesh.visible = isNodeEffectivelyVisible(props.model, cube)
     scene.add(mesh)
     meshes.push(mesh)
   }
@@ -153,8 +172,11 @@ function refreshSelectionMaterials(): void {
 }
 
 async function rebuildTexture(): Promise<void> {
-  await loadTexture()
-  rebuildMeshes(false)
+  try {
+    if (await loadTexture()) rebuildMeshes(false)
+  } catch {
+    rebuildMeshes(false)
+  }
 }
 
 function resize(): void {
@@ -176,18 +198,29 @@ function setPointer(event: PointerEvent): void {
 }
 
 function onPointerDown(event: PointerEvent): void {
-  if (event.isPrimary === false) return
+  activePointers.add(event.pointerId)
+  if (activePointers.size > 1 || event.isPrimary === false) {
+    pointerStart = undefined
+    return
+  }
+  try { renderer?.domElement.setPointerCapture(event.pointerId) } catch { /* Safari released it. */ }
   pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY }
 }
 
 function onPointerUp(event: PointerEvent): void {
+  activePointers.delete(event.pointerId)
+  try {
+    if (renderer?.domElement.hasPointerCapture(event.pointerId)) {
+      renderer.domElement.releasePointerCapture(event.pointerId)
+    }
+  } catch { /* Pointer capture already ended. */ }
   if (!camera || !pointerStart || pointerStart.id !== event.pointerId) return
   const moved = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y)
   pointerStart = undefined
   if (moved > 8) return
   setPointer(event)
   raycaster.setFromCamera(pointer, camera)
-  const hit = raycaster.intersectObjects(meshes, false)[0]
+  const hit = raycaster.intersectObjects(meshes.filter((mesh) => mesh.visible), false)[0]
   if (!hit) return
   const cubeId = String(hit.object.userData.cubeId ?? '')
   if (!cubeId) return
@@ -195,6 +228,16 @@ function onPointerUp(event: PointerEvent): void {
   const face = materialIndexToFace[materialIndex] ?? 'north'
   emit('selectCube', cubeId)
   emit('selectFace', face)
+}
+
+function onPointerCancel(event: PointerEvent): void {
+  activePointers.delete(event.pointerId)
+  if (pointerStart?.id === event.pointerId) pointerStart = undefined
+  try {
+    if (renderer?.domElement.hasPointerCapture(event.pointerId)) {
+      renderer.domElement.releasePointerCapture(event.pointerId)
+    }
+  } catch { /* Pointer capture already ended. */ }
 }
 
 onMounted(async () => {
@@ -228,15 +271,17 @@ onMounted(async () => {
 
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
   renderer.domElement.addEventListener('pointerup', onPointerUp)
+  renderer.domElement.addEventListener('pointercancel', onPointerCancel)
+  renderer.domElement.addEventListener('lostpointercapture', onPointerCancel)
   observer = new ResizeObserver(resize)
   observer.observe(host.value)
   resize()
-  await loadTexture()
+  try { await loadTexture() } catch { /* The untextured preview remains usable. */ }
   rebuildMeshes(true)
 })
 
-watch(() => props.model, () => rebuildMeshes(true), { deep: true })
-watch(() => props.texture, () => { void rebuildTexture() }, { deep: true })
+watch(() => [props.model.id, props.model.revision] as const, () => rebuildMeshes(true))
+watch(() => [props.texture?.id, props.texture?.updatedAt] as const, () => { void rebuildTexture() })
 watch(() => [props.selectedCubeId, props.selectedFace] as const, refreshSelectionMaterials)
 
 onBeforeUnmount(() => {
@@ -246,20 +291,34 @@ onBeforeUnmount(() => {
   if (renderer) {
     renderer.domElement.removeEventListener('pointerdown', onPointerDown)
     renderer.domElement.removeEventListener('pointerup', onPointerUp)
+    renderer.domElement.removeEventListener('pointercancel', onPointerCancel)
+    renderer.domElement.removeEventListener('lostpointercapture', onPointerCancel)
   }
   disposeMeshes()
   textureMap?.dispose()
-  disposeTextureUrl()
+  textureLoadGeneration += 1
+  activePointers.clear()
+  scene?.traverse((object) => {
+    const disposable = object as THREE.Object3D & {
+      geometry?: THREE.BufferGeometry
+      material?: THREE.Material | THREE.Material[]
+    }
+    disposable.geometry?.dispose()
+    if (Array.isArray(disposable.material)) disposable.material.forEach((material) => material.dispose())
+    else disposable.material?.dispose()
+  })
+  renderer?.setAnimationLoop(null)
   renderer?.dispose()
+  renderer?.forceContextLoss()
   renderer?.domElement.remove()
 })
 </script>
 
 <template>
-  <div ref="host" class="texture-preview" />
+  <div ref="host" class="texture-preview" @contextmenu.prevent />
 </template>
 
 <style scoped>
-.texture-preview { width: 100%; height: 100%; min-height: 11rem; overflow: hidden; background: #111613; touch-action: none; }
+.texture-preview { width: 100%; height: 100%; min-height: 9rem; overflow: hidden; background: #111613; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .texture-preview :deep(canvas) { display: block; width: 100%; height: 100%; }
 </style>

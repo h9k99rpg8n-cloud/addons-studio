@@ -20,6 +20,6 @@ You should receive an acknowledgment through GitHub as soon as a maintainer revi
 
 ## Current security model
 
-Alpha `0.0.3` has no user accounts, cloud synchronization, server API, add-on export, code execution editor, or collaboration system. Projects, folders, internal model data, and modeling references stay in the browser’s IndexedDB. Imported project icons are restricted to PNG/JPG and capped at 2 MB; reference images are restricted to PNG/JPG and capped at 12 MB. Images are decoded by the browser before use.
+Alpha `0.0.4.3` has no user accounts, cloud synchronization, server API, add-on export, code execution editor, or collaboration system. Projects, folders, internal model data, modeling references, project materials, texture-image blobs, and face/UV bindings stay in the browser’s IndexedDB. Imported project icons are restricted to PNG/JPG and capped at 2 MB; reference/background images are restricted to PNG/JPG and capped at 12 MB; Texture Core images are restricted to PNG/JPG, 16 MB, 4096 pixels per side, and 16 megapixels. Images are decoded by the browser before use, and runtime object URLs are revoked when no longer needed.
 
 Users remain responsible for their device and browser security. Clearing site data can remove local projects.
