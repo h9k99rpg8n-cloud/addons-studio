@@ -148,22 +148,40 @@ export class ProjectRepository {
     }
 
     try {
-      const [sourceModels, currentAssets, legacyAssets] = await Promise.all([
+      const [
+        sourceModels,
+        currentAssets,
+        legacyAssets,
+        sourceTextureAssets,
+        sourceMaterials,
+        sourceBindings,
+      ] = await Promise.all([
         this.database.models.where('projectId').equals(source.id).toArray(),
         this.database.modelEditorAssets.where('projectId').equals(source.id).toArray(),
         this.database.modelReferenceAssets.where('projectId').equals(source.id).toArray(),
+        this.database.textureAssets.where('projectId').equals(source.id).toArray(),
+        this.database.materials.where('projectId').equals(source.id).toArray(),
+        this.database.textureBindings.where('projectId').equals(source.id).toArray(),
       ])
       const sourceAssets = [...new Map(
         [...legacyAssets, ...currentAssets].map((asset) => [asset.id, asset]),
       ).values()]
       const modelIds = new Map(sourceModels.map((model) => [model.id, createId()]))
       const assetIds = new Map(sourceAssets.map((asset) => [asset.id, createId()]))
+      const textureAssetIds = new Map(sourceTextureAssets.map((asset) => [asset.id, createId()]))
+      const materialIds = new Map(sourceMaterials.map((material) => [material.id, createId()]))
+      const nodeMaps = new Map(sourceModels.map((model) => {
+        const normalized = cloneStudioModel(model)
+        return [model.id, {
+          elementIds: new Map(normalized.elements.map((element) => [element.id, createId()])),
+          groupIds: new Map(normalized.groups.map((group) => [group.id, createId()])),
+          folderIds: new Map(normalized.folders.map((folder) => [folder.id, createId()])),
+        }]
+      }))
 
       const duplicatedModels = sourceModels.map((model) => {
         const normalized = cloneStudioModel(model)
-        const elementIds = new Map(normalized.elements.map((element) => [element.id, createId()]))
-        const groupIds = new Map(normalized.groups.map((group) => [group.id, createId()]))
-        const folderIds = new Map(normalized.folders.map((folder) => [folder.id, createId()]))
+        const { elementIds, groupIds, folderIds } = nodeMaps.get(model.id)!
         return {
           ...normalized,
           id: modelIds.get(model.id)!,
@@ -225,6 +243,44 @@ export class ProjectRepository {
           createdAt: now,
         }]
       })
+      const duplicatedTextureAssets = sourceTextureAssets.map((asset) => ({
+        ...asset,
+        id: textureAssetIds.get(asset.id)!,
+        projectId: duplicate.id,
+        // Blob data is immutable and IndexedDB performs its own structured clone.
+        // Keeping the value intact also handles Safari/fake-indexeddb implementations
+        // that restore a valid stored binary value without exposing Blob#slice.
+        blob: asset.blob,
+        createdAt: now,
+        updatedAt: now,
+      }))
+      const duplicatedMaterials = sourceMaterials.map((material) => ({
+        ...material,
+        id: materialIds.get(material.id)!,
+        projectId: duplicate.id,
+        textureAssetId: material.textureAssetId
+          ? textureAssetIds.get(material.textureAssetId)
+          : undefined,
+        createdAt: now,
+        updatedAt: now,
+        revision: 1,
+      }))
+      const duplicatedBindings = sourceBindings.flatMap((binding) => {
+        const modelId = modelIds.get(binding.modelId)
+        const cubeId = nodeMaps.get(binding.modelId)?.elementIds.get(binding.cubeId)
+        const materialId = materialIds.get(binding.materialId)
+        if (!modelId || !cubeId || !materialId) return []
+        return [{
+          ...binding,
+          id: createId(),
+          projectId: duplicate.id,
+          modelId,
+          cubeId,
+          materialId,
+          uv: { ...binding.uv },
+          updatedAt: now,
+        }]
+      })
 
       await this.database.transaction(
         'rw',
@@ -234,6 +290,9 @@ export class ProjectRepository {
           this.database.models,
           this.database.modelReferenceAssets,
           this.database.modelEditorAssets,
+          this.database.textureAssets,
+          this.database.materials,
+          this.database.textureBindings,
         ],
         async () => {
           await this.database.projects.add(duplicate)
@@ -241,6 +300,13 @@ export class ProjectRepository {
           if (duplicatedModels.length) await this.database.models.bulkAdd(duplicatedModels)
           if (duplicatedAssets.length) {
             await this.database.modelEditorAssets.bulkAdd(duplicatedAssets)
+          }
+          if (duplicatedTextureAssets.length) {
+            await this.database.textureAssets.bulkAdd(duplicatedTextureAssets)
+          }
+          if (duplicatedMaterials.length) await this.database.materials.bulkAdd(duplicatedMaterials)
+          if (duplicatedBindings.length) {
+            await this.database.textureBindings.bulkAdd(duplicatedBindings)
           }
         },
       )
@@ -264,6 +330,9 @@ export class ProjectRepository {
           this.database.models,
           this.database.modelReferenceAssets,
           this.database.modelEditorAssets,
+          this.database.textureAssets,
+          this.database.materials,
+          this.database.textureBindings,
         ],
         async () => {
           await this.database.projects.delete(id)
@@ -271,6 +340,9 @@ export class ProjectRepository {
           await this.database.models.where('projectId').equals(id).delete()
           await this.database.modelReferenceAssets.where('projectId').equals(id).delete()
           await this.database.modelEditorAssets.where('projectId').equals(id).delete()
+          await this.database.textureAssets.where('projectId').equals(id).delete()
+          await this.database.materials.where('projectId').equals(id).delete()
+          await this.database.textureBindings.where('projectId').equals(id).delete()
         },
       )
     } catch (error) {

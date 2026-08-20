@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Addons Studio is licensed under the MIT License. The following direct dependencies are independent projects distributed under their own licenses. Versions reflect the Alpha `0.0.3.6.2` lockfile; `package-lock.json` is the source of truth for the complete transitive dependency graph.
+Addons Studio is licensed under the MIT License. The following direct dependencies are independent projects distributed under their own licenses. Versions reflect the Alpha `0.0.4.3` lockfile; `package-lock.json` is the source of truth for the complete transitive dependency graph.
 
 | Dependency | Version | Author / project | Repository | License | Purpose in Addons Studio |
 | --- | ---: | --- | --- | --- | --- |
@@ -9,7 +9,7 @@ Addons Studio is licensed under the MIT License. The following direct dependenci
 | Pinia | 4.0.3 | Eduardo San Martin Morote / Vue.js | [vuejs/pinia](https://github.com/vuejs/pinia) | MIT | Application and project state |
 | Dexie | 4.4.4 | David Fahlander / Dexie.js | [dexie/Dexie.js](https://github.com/dexie/Dexie.js) | Apache-2.0 | IndexedDB schema, queries, and transactions |
 | Lucide Vue | 1.31.0 | Eric Fennis / Lucide | [lucide-icons/lucide](https://github.com/lucide-icons/lucide) | ISC | Generic touch-interface action icons; product-specific icons are original Addons Studio work |
-| Three.js | 0.185.1 | Ricardo Cabello and contributors / three.js | [mrdoob/three.js](https://github.com/mrdoob/three.js) | MIT | Lazy-loaded WebGL viewport, geometry preview, camera controls, lighting, and raycasting in Model Studio |
+| Three.js | 0.185.1 | Ricardo Cabello and contributors / three.js | [mrdoob/three.js](https://github.com/mrdoob/three.js) | MIT | Lazy-loaded WebGL viewports, model/texture previews, camera controls, lighting, and raycasting |
 | fflate | 0.8.3 | 101arrowz / fflate | [101arrowz/fflate](https://github.com/101arrowz/fflate) | MIT | Streaming-friendly ZIP creation and validation for Addons Studio project packages |
 | Vite | 8.2.1 | Evan You / Vite | [vitejs/vite](https://github.com/vitejs/vite) | MIT | Development server and production bundler |
 | Vite Plugin Vue | 6.0.8 | Evan You / Vite | [vitejs/vite-plugin-vue](https://github.com/vitejs/vite-plugin-vue) | MIT | Vue single-file component compilation |

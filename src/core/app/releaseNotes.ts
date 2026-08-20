@@ -10,15 +10,27 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
     version: APP_VERSION,
+    title: 'Texture Core Stabilized',
+    subtitle: 'Stability, Mobile Polish & Bug Fixes',
+    highlights: [
+      'UV 2.0 movement, resizing, multi-face editing, atlas bounds, precision, and batch saving are more reliable',
+      'Paint 2.0 keeps fast Pencil and Eraser strokes continuous while separating painting from pinch zoom and panning',
+      'iPhone and Safari pointer capture, cancellation, safe areas, touch targets, and editor scrolling received focused hardening',
+      'The 3D texture preview now refreshes and disposes runtime resources more predictably across model and material changes',
+      'Texture persistence avoids duplicate writes and stale async results when switching cubes, faces, materials, or modes quickly',
+      'This is a stability and regression-fix release, not a new Texture Core feature phase',
+    ],
+  },
+  {
+    version: '0.0.4.2',
     title: 'Texture Core 0.2',
     subtitle: 'UV & Paint Update',
     highlights: [
       'UV 2.0 shows the mapped faces of the selected cuboid together as a visual atlas over the real texture',
       'Auto Box UV generates a compact six-face cuboid net from the model dimensions and keeps it inside the texture',
       'Multi-face selection can apply one material to several faces and reset selected UV islands together',
-      'UV precision now supports 0.25, 0.5, 1, 2, and 4 px snapping plus Copy, Paste, Fit, Flip, Rotate, and Reset',
+      'UV precision supports 0.25, 0.5, 1, 2, and 4 px snapping plus Copy, Paste, Fit, Flip, Rotate, and Reset',
       'Paint 2.0 adds Line, Rectangle, Replace Color, opacity, Mirror X/Y, pixel grid, 64-step history, and touch-first pinch zoom',
-      'Texture Core was modularized again so UV and Paint can evolve independently before the 0.0.4.3 stabilization release',
     ],
   },
   {

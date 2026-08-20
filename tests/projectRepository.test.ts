@@ -5,6 +5,7 @@ import { ModelRepository } from '@/core/model/modelRepository'
 import { DEFAULT_BEDROCK_VERSION } from '@/core/project/bedrockVersions'
 import { ProjectRepository } from '@/core/project/projectRepository'
 import { AddonsStudioDatabase } from '@/core/storage/database'
+import { TextureRepository } from '@/core/texture/textureRepository'
 import type { CreateProjectInput } from '@/types/project'
 
 const inspectTestImage = async (file: File) => ({
@@ -74,7 +75,7 @@ describe('ProjectRepository', () => {
     expect(secondCopy.namespace).toBe('rio_grande_urbanismo_copy_2')
   })
 
-  it('duplicates models and reference assets as independent project data', async () => {
+  it('duplicates models, editor assets, materials, textures, and bindings as independent data', async () => {
     const source = await repository.createProject(input())
     const models = new ModelRepository(database, inspectTestImage)
     let model = await models.createModel({
@@ -96,6 +97,21 @@ describe('ProjectRepository', () => {
         new File(['reference'], 'front.png', { type: 'image/png' }),
       )
     ).model
+    const textures = new TextureRepository(database, inspectTestImage)
+    const material = await textures.createMaterial({ projectId: source.id, name: 'Urban Stone' })
+    const importedTexture = await textures.importTexture(
+      material.id,
+      new File(['texture-pixels'], 'urban_stone.png', { type: 'image/png' }),
+    )
+    const sourceBinding = await textures.saveFaceBinding({
+      projectId: source.id,
+      modelId: model.id,
+      cubeId: cube.id,
+      face: 'north',
+      materialId: material.id,
+      textureWidth: importedTexture.asset.width,
+      textureHeight: importedTexture.asset.height,
+    })
     model = (
       await models.addBackgroundAsset(
         model,
@@ -106,6 +122,7 @@ describe('ProjectRepository', () => {
     const duplicate = await repository.duplicateProject(source.id)
     const copiedModels = await models.listModels(duplicate.id)
     const copiedAssets = await models.listEditorAssets(copiedModels[0]!.id)
+    const copiedTextureWorkspace = await textures.getWorkspace(copiedModels[0]!.id)
 
     expect(copiedModels).toHaveLength(1)
     expect(copiedModels[0]).toMatchObject({
@@ -125,6 +142,18 @@ describe('ProjectRepository', () => {
     expect(copiedModels[0]?.references[0]?.assetId).toBe(copiedReference?.id)
     expect(copiedModels[0]?.editor.background.customAssetId).toBe(copiedBackground?.id)
     expect(copiedModels[0]?.editor.background.type).toBe('custom')
+    expect(copiedTextureWorkspace.materials).toHaveLength(1)
+    expect(copiedTextureWorkspace.assets).toHaveLength(1)
+    expect(copiedTextureWorkspace.bindings).toHaveLength(1)
+    expect(copiedTextureWorkspace.materials[0]?.id).not.toBe(material.id)
+    expect(copiedTextureWorkspace.assets[0]?.id).not.toBe(importedTexture.asset.id)
+    expect(copiedTextureWorkspace.materials[0]?.textureAssetId).toBe(copiedTextureWorkspace.assets[0]?.id)
+    expect(copiedTextureWorkspace.bindings[0]).toMatchObject({
+      modelId: copiedModels[0]!.id,
+      cubeId: copiedModels[0]!.elements[0]!.id,
+      materialId: copiedTextureWorkspace.materials[0]!.id,
+      uv: sourceBinding.uv,
+    })
   })
 
   it('updates project metadata without changing its identity', async () => {

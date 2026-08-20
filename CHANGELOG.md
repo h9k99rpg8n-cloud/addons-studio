@@ -10,6 +10,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Scope to be selected for the next development prompt; no future editor is implied as complete.
 
+## [0.0.4.3] - 2026-08-20
+
+### Fixed
+
+- Normalized UV move, resize, Rotate, Flip, Fit, Reset, Copy, Paste, and Auto Box results against finite 0.25/0.5/1/2/4 px precision and atlas bounds.
+- Preserved decimal cuboid dimensions in Auto Box UV and repaired legacy invalid/out-of-bounds bindings without resetting IndexedDB.
+- Coalesced per-binding UV persistence, removed the duplicate commit path, made multi-face assignment transactional, and prevented stale asynchronous saves during rapid editor changes.
+- Interpolated fast Pencil/Eraser pointer samples, separated touch painting from pinch/pan, corrected even-size X/Y mirror placement, and deduplicated no-op Paint history states.
+- Bound Paint saves to their originating texture asset so rapid cube, face, material, model, or mode changes cannot write pixels into the wrong asset.
+- Hardened Safari pointer capture/cancel/lost-capture behavior, context-menu and scroll suppression, safe areas, landscape sizing, 16 px editable controls, and finger-sized interaction targets.
+- Improved textured preview face raycasting, rotated-model fitting, hidden-cube handling, stale texture-load rejection, shared materials, and WebGL/resource cleanup.
+- Included Texture Core records in local project duplication/deletion and removed model-specific bindings when a model is deleted while preserving project materials.
+
+### Changed
+
+- Paint logic now lives behind a focused, independently tested pixel-operation service while `TextureCoreView.vue` remains an orchestrator.
+- Paint autosaves after a short idle delay and flushes on mode change, route change, page hide, and editor teardown without producing repetitive save toasts.
+- Texture replacement atomically normalizes every linked face binding if atlas dimensions change.
+- Added a focused 0.0.4.3 What's New entry and official compatibility/validation documentation.
+
+### Preserved
+
+- Existing Alpha 0.0.4.0, 0.0.4.0.1, and 0.0.4.2 IndexedDB data; this release adds no destructive schema migration.
+- Model Core, project folders, PWA behavior, GitHub Pages routing, project-scoped reusable materials, and model-specific texture bindings.
+- Materials Core and Animation Core remain out of scope.
+
 ## [0.0.3.6.2] - 2026-08-13
 
 ### Added
@@ -177,7 +203,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - GitHub Actions workflows for CI and GitHub Pages.
 - Project, contribution, security, architecture, license, and third-party documentation.
 
-[Unreleased]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6.2...HEAD
+[Unreleased]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.4.3...HEAD
+[0.0.4.3]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.4.2...v0.0.4.3
+[0.0.4.2]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.4.0.1...v0.0.4.2
+[0.0.4.0.1]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.4.0...v0.0.4.0.1
+[0.0.4.0]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6.3...v0.0.4.0
+[0.0.3.6.3]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6.2...v0.0.3.6.3
 [0.0.3.6.2]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6.1...v0.0.3.6.2
 [0.0.3.6.1]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.6...v0.0.3.6.1
 [0.0.3.6]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.3.5...v0.0.3.6

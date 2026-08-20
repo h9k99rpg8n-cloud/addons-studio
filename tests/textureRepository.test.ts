@@ -6,6 +6,7 @@ import { DEFAULT_BEDROCK_VERSION } from '@/core/project/bedrockVersions'
 import { ProjectRepository } from '@/core/project/projectRepository'
 import { AddonsStudioDatabase } from '@/core/storage/database'
 import { TextureRepository } from '@/core/texture/textureRepository'
+import { TextureUvService } from '@/core/texture/textureUvService'
 
 const inspectTestTexture = async (file: File) => ({
   mimeType: file.type === 'image/jpeg' ? 'image/jpeg' as const : 'image/png' as const,
@@ -150,6 +151,75 @@ describe('TextureRepository', () => {
     expect(after?.elements).toEqual(before?.elements)
   })
 
+  it('assigns multiple selected faces atomically and skips identical rewrites', async () => {
+    const material = await textures.createMaterial({ projectId, name: 'Batch Material' })
+    const saved = await textures.saveFaceBindings({
+      projectId,
+      modelId,
+      cubeId,
+      faces: ['north', 'south', 'north'],
+      materialId: material.id,
+      textureWidth: 64,
+      textureHeight: 64,
+    })
+    expect(saved.map((binding) => binding.face)).toEqual(['north', 'south'])
+    const timestamps = new Map(saved.map((binding) => [binding.face, binding.updatedAt]))
+
+    const repeated = await textures.saveFaceBindings({
+      projectId,
+      modelId,
+      cubeId,
+      faces: ['north', 'south'],
+      materialId: material.id,
+      textureWidth: 64,
+      textureHeight: 64,
+    })
+    expect(repeated.map((binding) => binding.updatedAt)).toEqual([
+      timestamps.get('north'),
+      timestamps.get('south'),
+    ])
+    expect((await textures.getWorkspace(modelId)).bindings).toHaveLength(2)
+  })
+
+  it('repairs UV bounds when a reusable material receives a smaller texture', async () => {
+    const variableTextures = new TextureRepository(database, async (file) => ({
+      mimeType: 'image/png' as const,
+      width: file.name.startsWith('small') ? 8 : 32,
+      height: file.name.startsWith('small') ? 8 : 32,
+    }))
+    const material = await variableTextures.createMaterial({ projectId, name: 'Resizable Atlas' })
+    await variableTextures.importTexture(
+      material.id,
+      new File(['large'], 'large.png', { type: 'image/png' }),
+    )
+    const binding = await variableTextures.saveFaceBinding({
+      projectId,
+      modelId,
+      cubeId,
+      face: 'north',
+      materialId: material.id,
+      textureWidth: 32,
+      textureHeight: 32,
+    })
+    await new TextureUvService(database).updateBindingUv(binding.id, {
+      ...binding.uv,
+      x: 24,
+      y: 20,
+      width: 8,
+      height: 12,
+    }, 32, 32, 1)
+
+    await variableTextures.importTexture(
+      material.id,
+      new File(['small'], 'small.png', { type: 'image/png' }),
+    )
+    const repaired = (await variableTextures.getWorkspace(modelId)).bindings[0]!
+    expect(repaired.uv.x + repaired.uv.width).toBeLessThanOrEqual(8)
+    expect(repaired.uv.y + repaired.uv.height).toBeLessThanOrEqual(8)
+    expect(await database.textureAssets.where('projectId').equals(projectId).count()).toBe(1)
+    expect((await variableTextures.getMaterial(material.id))?.revision).toBe(3)
+  })
+
   it('replaces edited texture pixels with PNG data and preserves the material link', async () => {
     const material = await textures.createMaterial({ projectId, name: 'Editable' })
     const imported = await textures.importTexture(
@@ -191,5 +261,46 @@ describe('TextureRepository', () => {
     expect(workspace.materials).toEqual([])
     expect(workspace.assets).toEqual([])
     expect(workspace.bindings).toEqual([])
+  })
+
+  it('keeps project materials reusable when a model is deleted but removes its bindings', async () => {
+    const material = await textures.createMaterial({ projectId, name: 'Project Library Material' })
+    await textures.saveFaceBinding({
+      projectId,
+      modelId,
+      cubeId,
+      face: 'west',
+      materialId: material.id,
+      textureWidth: 16,
+      textureHeight: 16,
+    })
+
+    await models.deleteModel(modelId)
+
+    expect(await textures.listMaterials(projectId)).toHaveLength(1)
+    expect(await database.textureBindings.where('modelId').equals(modelId).count()).toBe(0)
+  })
+
+  it('deletes all Texture Core records with their owning project', async () => {
+    const material = await textures.createMaterial({ projectId, name: 'Disposable Texture' })
+    await textures.importTexture(
+      material.id,
+      new File(['texture'], 'disposable.png', { type: 'image/png' }),
+    )
+    await textures.saveFaceBinding({
+      projectId,
+      modelId,
+      cubeId,
+      face: 'down',
+      materialId: material.id,
+      textureWidth: 32,
+      textureHeight: 32,
+    })
+
+    await projects.deleteProject(projectId)
+
+    expect(await database.materials.where('projectId').equals(projectId).count()).toBe(0)
+    expect(await database.textureAssets.where('projectId').equals(projectId).count()).toBe(0)
+    expect(await database.textureBindings.where('projectId').equals(projectId).count()).toBe(0)
   })
 })
