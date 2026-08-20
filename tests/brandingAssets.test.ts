@@ -21,9 +21,9 @@ describe('release metadata and branding assets', () => {
       version: string
     }
 
-    expect(packageJson.version).toBe('0.0.4-alpha.2')
-    expect(APP_VERSION).toBe('0.0.4.2')
-    expect(APP_RELEASE_LABEL).toBe('Alpha 0.0.4.2')
+    expect(packageJson.version).toBe('0.0.4-alpha.3')
+    expect(APP_VERSION).toBe('0.0.4.3')
+    expect(APP_RELEASE_LABEL).toBe('Alpha 0.0.4.3')
   })
 
   it.each([
