@@ -1,77 +1,71 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
 
 import AppButton from '@/components/common/AppButton.vue'
 import AppDialog from '@/components/common/AppDialog.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
-import IconButton from '@/components/common/IconButton.vue'
+import StudioPageHeader from '@/components/common/StudioPageHeader.vue'
+import { useProjectContext } from '@/composables/useProjectContext'
 import { toAppError } from '@/core/errors/AppError'
+import { BLOCKBENCH_WEB_URL } from '@/core/integrations/blockbenchIntegration'
+import { resourceRepository } from '@/core/resources/resourceRepository'
 import { textureRepository } from '@/core/texture/textureRepository'
 import { useLocaleStore } from '@/stores/locale'
-import { useProjectStore } from '@/stores/projects'
 import { useToastStore } from '@/stores/toasts'
+import type { StudioResourceFolder } from '@/types/resource'
 import type { StudioMaterial, StudioTextureAsset } from '@/types/texture'
+import { downloadBlob } from '@/utils/download'
 
 import MaterialSwatch from './MaterialSwatch.vue'
 
 const props = defineProps<{ projectId: string }>()
-const router = useRouter()
-const projects = useProjectStore()
 const locale = useLocaleStore()
 const toasts = useToastStore()
+const { project, loading: projectLoading, error: projectError } = useProjectContext(() => props.projectId)
 
 const materials = ref<StudioMaterial[]>([])
 const assets = ref<StudioTextureAsset[]>([])
+const folders = ref<StudioResourceFolder[]>([])
+const query = ref('')
+const folderFilter = ref('all')
 const loading = ref(true)
-const loadError = ref('')
-const selectedMaterialId = ref('')
-const createOpen = ref(false)
-const materialName = ref('Material')
-const importInput = ref<HTMLInputElement>()
-const canvas = ref<HTMLCanvasElement>()
-const canvasScroll = ref<HTMLDivElement>()
-const color = ref('#4f8f62')
-const tool = ref<'pencil' | 'eraser' | 'fill' | 'eyedropper' | 'inspect'>('pencil')
-const pixelSize = ref(1)
-const zoom = ref(10)
-const pixelInfo = ref<{ x: number; y: number; color: string; alpha: number }>()
-const history = ref<ImageData[]>([])
-const future = ref<ImageData[]>([])
-const dirty = ref(false)
 const busy = ref(false)
-let canvasUrl = ''
-const touchPoints = new Map<number, { x: number; y: number }>()
-let pinchStartDistance = 0
-let pinchStartZoom = 10
-let pinchStartCentroid = { x: 0, y: 0 }
-let pinchStartScroll = { left: 0, top: 0 }
+const loadError = ref('')
+const importInput = ref<HTMLInputElement>()
+const replaceInput = ref<HTMLInputElement>()
+const folderOpen = ref(false)
+const folderActionsOpen = ref(false)
+const actionsOpen = ref(false)
+const folderName = ref('')
+const selected = ref<StudioMaterial>()
+const editName = ref('')
+const editFolder = ref('')
+const usageCount = ref(0)
+const usageItems = ref<string[]>([])
+const activeFolder = computed(() => folders.value.find((folder) => folder.id === folderFilter.value))
+const editFolderName = ref('')
 
-const project = computed(() =>
-  projects.activeProject?.id === props.projectId
-    ? projects.activeProject
-    : projects.projects.find((entry) => entry.id === props.projectId),
-)
-const selectedMaterial = computed(() => materials.value.find((entry) => entry.id === selectedMaterialId.value))
-const selectedAsset = computed(() => assets.value.find((entry) => entry.id === selectedMaterial.value?.textureAssetId))
+const filteredMaterials = computed(() => {
+  const needle = query.value.trim().toLowerCase()
+  return materials.value.filter((material) => {
+    const inFolder = folderFilter.value === 'all'
+      || (folderFilter.value === 'root' ? !material.folderId : material.folderId === folderFilter.value)
+    return inFolder && (!needle || `${material.name} ${material.identifier}`.toLowerCase().includes(needle))
+  })
+})
 
 function assetFor(material: StudioMaterial): StudioTextureAsset | undefined {
-  return assets.value.find((entry) => entry.id === material.textureAssetId)
-}
-
-function releaseCanvasUrl(): void {
-  if (canvasUrl) URL.revokeObjectURL(canvasUrl)
-  canvasUrl = ''
+  return assets.value.find((asset) => asset.id === material.textureAssetId)
 }
 
 async function loadLibrary(): Promise<void> {
   loading.value = true
   try {
-    await projects.loadProjects()
-    await projects.openProject(props.projectId)
-    materials.value = await textureRepository.listMaterials(props.projectId)
-    assets.value = await textureRepository.listTextureAssets(props.projectId)
-    selectedMaterialId.value ||= materials.value[0]?.id ?? ''
+    ;[materials.value, assets.value, folders.value] = await Promise.all([
+      textureRepository.listMaterials(props.projectId),
+      textureRepository.listTextureAssets(props.projectId),
+      resourceRepository.listFolders(props.projectId, 'material'),
+    ])
   } catch (error) {
     loadError.value = toAppError(error, locale.t('Addons Studio could not load Materials.')).userMessage
   } finally {
@@ -80,365 +74,230 @@ async function loadLibrary(): Promise<void> {
 }
 
 onMounted(loadLibrary)
-onBeforeUnmount(releaseCanvasUrl)
 
-watch(selectedAsset, async () => {
-  await nextTick()
-  await loadCanvas()
-})
-
-watch(selectedMaterialId, async () => {
-  await nextTick()
-  await loadCanvas()
-})
-
-async function loadCanvas(): Promise<void> {
-  const target = canvas.value
-  if (!target) return
-  const ctx = target.getContext('2d', { willReadFrequently: true })
-  if (!ctx) return
-  releaseCanvasUrl()
-  history.value = []
-  future.value = []
-  dirty.value = false
-  pixelInfo.value = undefined
-  const asset = selectedAsset.value
-  if (!asset) {
-    target.width = 32
-    target.height = 32
-    ctx.clearRect(0, 0, target.width, target.height)
-    fitCanvas()
-    return
-  }
-  canvasUrl = URL.createObjectURL(asset.blob)
-  const image = new Image()
-  image.decoding = 'async'
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve()
-    image.onerror = () => reject(new Error('Texture decode failed'))
-    image.src = canvasUrl
-  })
-  target.width = asset.width
-  target.height = asset.height
-  ctx.imageSmoothingEnabled = false
-  ctx.clearRect(0, 0, target.width, target.height)
-  ctx.drawImage(image, 0, 0, target.width, target.height)
-  fitCanvas()
-}
-
-function fitCanvas(): void {
-  const width = canvas.value?.width ?? selectedAsset.value?.width ?? 32
-  const available = Math.max(180, Math.min(globalThis.innerWidth - 28, 560))
-  zoom.value = Math.max(2, Math.min(28, Math.floor(available / Math.max(1, width))))
-}
-
-function openCreate(): void {
-  materialName.value = `Material ${materials.value.length + 1}`
-  createOpen.value = true
-}
-
-async function createMaterial(): Promise<void> {
+async function importImages(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const files = [...(input.files ?? [])]
+  if (!files.length) return
   busy.value = true
+  let imported = 0
+  for (const file of files) {
+    let provisionalMaterialId: string | undefined
+    try {
+      const name = file.name.replace(/\.[^.]+$/, '') || locale.t('Material')
+      const material = await textureRepository.createMaterial({ projectId: props.projectId, name })
+      provisionalMaterialId = material.id
+      const result = await textureRepository.importTexture(material.id, file)
+      materials.value.unshift(result.material)
+      assets.value.unshift(result.asset)
+      imported += 1
+    } catch (error) {
+      if (provisionalMaterialId) await textureRepository.deleteMaterial(provisionalMaterialId).catch(() => undefined)
+      toasts.push({ type: 'error', message: `${file.name}: ${toAppError(error, locale.t('Texture import failed.')).userMessage}` })
+    }
+  }
+  if (imported) toasts.push({ type: 'success', message: locale.t('{count} materials imported.', { count: imported }) })
+  input.value = ''
+  busy.value = false
+}
+
+async function createFolder(): Promise<void> {
   try {
-    const material = await textureRepository.createMaterial({ projectId: props.projectId, name: materialName.value })
-    materials.value.unshift(material)
-    selectedMaterialId.value = material.id
-    createOpen.value = false
-    toasts.push({ type: 'success', message: locale.t('Material created') })
+    const folder = await resourceRepository.createFolder({ projectId: props.projectId, resourceType: 'material', name: folderName.value })
+    folders.value.push(folder)
+    folderName.value = ''
+    folderOpen.value = false
   } catch (error) {
-    toasts.push({ type: 'error', message: toAppError(error, locale.t('Addons Studio could not create this material.')).userMessage })
-  } finally {
-    busy.value = false
+    toasts.push({ type: 'error', message: toAppError(error, locale.t('Addons Studio could not create this folder.')).userMessage })
   }
 }
 
-function openImport(): void {
-  if (!selectedMaterial.value) {
-    toasts.push({ type: 'info', message: locale.t('Create or select a material first.') })
-    return
-  }
-  importInput.value?.click()
+function openFolderActions(): void {
+  if (!activeFolder.value) return
+  editFolderName.value = activeFolder.value.name
+  folderActionsOpen.value = true
 }
 
-async function importTexture(event: Event): Promise<void> {
+async function renameActiveFolder(): Promise<void> {
+  if (!activeFolder.value) return
+  const updated = await resourceRepository.renameFolder(activeFolder.value.id, editFolderName.value)
+  folders.value = folders.value.map((folder) => folder.id === updated.id ? updated : folder)
+  folderActionsOpen.value = false
+}
+
+async function deleteActiveFolder(): Promise<void> {
+  if (!activeFolder.value) return
+  const id = activeFolder.value.id
+  await resourceRepository.deleteFolder(id)
+  folders.value = folders.value.filter((folder) => folder.id !== id && folder.parentId !== id)
+  materials.value = materials.value.map((material) => material.folderId === id
+    ? { ...material, folderId: undefined }
+    : material)
+  folderFilter.value = 'root'
+  folderActionsOpen.value = false
+}
+
+async function openActions(material: StudioMaterial): Promise<void> {
+  selected.value = material
+  editName.value = material.name
+  editFolder.value = material.folderId ?? ''
+  actionsOpen.value = true
+  const [bindings, blocks, blockModels] = await Promise.all([
+    textureRepository.countMaterialBindings(material.id),
+    resourceRepository.list(props.projectId, 'block'),
+    resourceRepository.list(props.projectId, 'block_model'),
+  ])
+  const linkedResources = [...blocks, ...blockModels]
+    .filter((resource) => JSON.stringify(resource.payload).includes(material.id))
+  usageCount.value = bindings + linkedResources.length
+  usageItems.value = [
+    ...linkedResources.map((resource) => resource.name),
+    ...(bindings ? [locale.t('{count} legacy model face bindings', { count: bindings })] : []),
+  ]
+}
+
+async function saveActions(): Promise<void> {
+  if (!selected.value) return
+  let updated = await textureRepository.renameMaterial(selected.value.id, editName.value)
+  updated = await textureRepository.moveMaterial(updated.id, editFolder.value || undefined)
+  materials.value = materials.value.map((material) => material.id === updated.id ? updated : material)
+  actionsOpen.value = false
+}
+
+async function duplicateSelected(): Promise<void> {
+  if (!selected.value) return
+  const result = await textureRepository.duplicateMaterial(selected.value.id)
+  materials.value.unshift(result.material)
+  if (result.asset) assets.value.unshift(result.asset)
+  actionsOpen.value = false
+  toasts.push({ type: 'success', message: locale.t('Material duplicated') })
+}
+
+async function deleteSelected(): Promise<void> {
+  if (!selected.value) return
+  await textureRepository.deleteMaterial(selected.value.id)
+  materials.value = materials.value.filter((material) => material.id !== selected.value?.id)
+  assets.value = await textureRepository.listTextureAssets(props.projectId)
+  actionsOpen.value = false
+  toasts.push({ type: 'success', message: locale.t('Material deleted') })
+}
+
+function replaceSelected(): void {
+  replaceInput.value?.click()
+}
+
+async function replaceImage(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
-  if (!file || !selectedMaterial.value) return
-  busy.value = true
+  if (!file || !selected.value) return
   try {
-    const previousAssetId = selectedMaterial.value.textureAssetId
-    const result = await textureRepository.importTexture(selectedMaterial.value.id, file)
-    materials.value = materials.value.map((entry) => entry.id === result.material.id ? result.material : entry)
-    if (previousAssetId) assets.value = assets.value.filter((entry) => entry.id !== previousAssetId)
+    const oldAssetId = selected.value.textureAssetId
+    const result = await textureRepository.importTexture(selected.value.id, file)
+    materials.value = materials.value.map((material) => material.id === result.material.id ? result.material : material)
+    if (oldAssetId) assets.value = assets.value.filter((asset) => asset.id !== oldAssetId)
     assets.value.unshift(result.asset)
-    await nextTick()
-    await loadCanvas()
-    toasts.push({ type: 'success', message: locale.t('Texture imported successfully') })
+    selected.value = result.material
+    toasts.push({ type: 'success', message: locale.t('Texture replaced') })
   } catch (error) {
     toasts.push({ type: 'error', message: toAppError(error, locale.t('Addons Studio could not import this texture.')).userMessage })
   } finally {
     input.value = ''
-    busy.value = false
   }
 }
 
-function canvasBlob(target: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => target.toBlob((blob) => blob ? resolve(blob) : reject(new Error('PNG encode failed')), 'image/png'))
+function blobDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error)
+    reader.onload = () => resolve(String(reader.result))
+    reader.readAsDataURL(blob)
+  })
 }
 
-async function createBlank(size = 32): Promise<void> {
-  if (!selectedMaterial.value) return
-  const scratch = document.createElement('canvas')
-  scratch.width = size
-  scratch.height = size
-  const blob = await canvasBlob(scratch)
-  const previousAssetId = selectedMaterial.value.textureAssetId
-  const result = await textureRepository.importTexture(
-    selectedMaterial.value.id,
-    new File([blob], `${selectedMaterial.value.identifier}_${size}.png`, { type: 'image/png' }),
-  )
-  materials.value = materials.value.map((entry) => entry.id === result.material.id ? result.material : entry)
-  if (previousAssetId) assets.value = assets.value.filter((entry) => entry.id !== previousAssetId)
-  assets.value.unshift(result.asset)
-  await nextTick()
-  await loadCanvas()
-}
-
-function pushHistory(): void {
-  const target = canvas.value
-  const ctx = target?.getContext('2d', { willReadFrequently: true })
-  if (!target || !ctx) return
-  history.value.push(ctx.getImageData(0, 0, target.width, target.height))
-  if (history.value.length > 30) history.value.shift()
-  future.value = []
-}
-
-function undo(): void {
-  const target = canvas.value
-  const ctx = target?.getContext('2d', { willReadFrequently: true })
-  const image = history.value.pop()
-  if (!target || !ctx || !image) return
-  future.value.push(ctx.getImageData(0, 0, target.width, target.height))
-  ctx.putImageData(image, 0, 0)
-  dirty.value = true
-}
-
-function redo(): void {
-  const target = canvas.value
-  const ctx = target?.getContext('2d', { willReadFrequently: true })
-  const image = future.value.pop()
-  if (!target || !ctx || !image) return
-  history.value.push(ctx.getImageData(0, 0, target.width, target.height))
-  ctx.putImageData(image, 0, 0)
-  dirty.value = true
-}
-
-function pointFrom(event: PointerEvent): { x: number; y: number } | undefined {
-  const target = canvas.value
-  if (!target) return undefined
-  const rect = target.getBoundingClientRect()
-  const x = Math.floor((event.clientX - rect.left) / Math.max(1, rect.width) * target.width)
-  const y = Math.floor((event.clientY - rect.top) / Math.max(1, rect.height) * target.height)
-  return x >= 0 && y >= 0 && x < target.width && y < target.height ? { x, y } : undefined
-}
-
-function hexRgba(hex: string): [number, number, number, number] {
-  const value = Number.parseInt(hex.replace('#', ''), 16)
-  return [(value >> 16) & 255, (value >> 8) & 255, value & 255, 255]
-}
-
-function rgbaHex(r: number, g: number, b: number): string {
-  return `#${[r, g, b].map((entry) => entry.toString(16).padStart(2, '0')).join('')}`
-}
-
-function fill(ctx: CanvasRenderingContext2D, x: number, y: number, replacement: [number, number, number, number]): void {
-  const image = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height)
-  const data = image.data
-  const width = image.width
-  const offset = (y * width + x) * 4
-  const source = [data[offset], data[offset + 1], data[offset + 2], data[offset + 3]]
-  if (source.every((entry, index) => entry === replacement[index])) return
-  const stack: [number, number][] = [[x, y]]
-  while (stack.length) {
-    const [px, py] = stack.pop()!
-    if (px < 0 || py < 0 || px >= image.width || py >= image.height) continue
-    const current = (py * width + px) * 4
-    if (!source.every((entry, index) => data[current + index] === entry)) continue
-    data[current] = replacement[0]
-    data[current + 1] = replacement[1]
-    data[current + 2] = replacement[2]
-    data[current + 3] = replacement[3]
-    stack.push([px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1])
-  }
-  ctx.putImageData(image, 0, 0)
-}
-
-function paint(event: PointerEvent, first = false): void {
-  const target = canvas.value
-  const point = pointFrom(event)
-  const ctx = target?.getContext('2d', { willReadFrequently: true })
-  if (!target || !point || !ctx || !selectedAsset.value) return
-  const pixel = ctx.getImageData(point.x, point.y, 1, 1).data
-  if (tool.value === 'inspect') {
-    pixelInfo.value = { x: point.x, y: point.y, color: rgbaHex(pixel[0]!, pixel[1]!, pixel[2]!), alpha: pixel[3]! }
-    return
-  }
-  if (first) pushHistory()
-  if (tool.value === 'eyedropper') {
-    color.value = rgbaHex(pixel[0]!, pixel[1]!, pixel[2]!)
-    tool.value = 'pencil'
-    return
-  }
-  if (tool.value === 'fill') fill(ctx, point.x, point.y, hexRgba(color.value))
-  else if (tool.value === 'eraser') ctx.clearRect(point.x, point.y, pixelSize.value, pixelSize.value)
-  else {
-    ctx.fillStyle = color.value
-    ctx.fillRect(point.x, point.y, pixelSize.value, pixelSize.value)
-  }
-  dirty.value = true
-}
-
-function touchDistance(): number {
-  const values = [...touchPoints.values()]
-  return values.length < 2 ? 0 : Math.hypot(values[0]!.x - values[1]!.x, values[0]!.y - values[1]!.y)
-}
-
-function touchCentroid(): { x: number; y: number } {
-  const values = [...touchPoints.values()]
-  if (values.length < 2) return values[0] ?? { x: 0, y: 0 }
-  return { x: (values[0]!.x + values[1]!.x) / 2, y: (values[0]!.y + values[1]!.y) / 2 }
-}
-
-function pointerDown(event: PointerEvent): void {
-  if (event.pointerType === 'touch') {
-    touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY })
-    if (touchPoints.size === 2) {
-      pinchStartDistance = touchDistance()
-      pinchStartZoom = zoom.value
-      pinchStartCentroid = touchCentroid()
-      pinchStartScroll = { left: canvasScroll.value?.scrollLeft ?? 0, top: canvasScroll.value?.scrollTop ?? 0 }
-      return
-    }
-  }
-  canvas.value?.setPointerCapture(event.pointerId)
-  paint(event, true)
-}
-
-function pointerMove(event: PointerEvent): void {
-  if (event.pointerType === 'touch' && touchPoints.has(event.pointerId)) {
-    touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY })
-    if (touchPoints.size >= 2 && pinchStartDistance > 0) {
-      event.preventDefault()
-      zoom.value = Math.max(2, Math.min(32, Math.round(pinchStartZoom * touchDistance() / pinchStartDistance * 10) / 10))
-      const center = touchCentroid()
-      if (canvasScroll.value) {
-        canvasScroll.value.scrollLeft = pinchStartScroll.left - (center.x - pinchStartCentroid.x)
-        canvasScroll.value.scrollTop = pinchStartScroll.top - (center.y - pinchStartCentroid.y)
-      }
-      return
-    }
-  }
-  if (!canvas.value?.hasPointerCapture(event.pointerId) || tool.value === 'fill' || tool.value === 'eyedropper') return
-  paint(event)
-}
-
-function pointerUp(event: PointerEvent): void {
-  touchPoints.delete(event.pointerId)
-  if (touchPoints.size < 2) pinchStartDistance = 0
-  if (canvas.value?.hasPointerCapture(event.pointerId)) canvas.value.releasePointerCapture(event.pointerId)
-}
-
-async function saveQuickEdit(): Promise<void> {
-  if (!canvas.value || !selectedAsset.value) return
-  busy.value = true
+async function editInBlockbench(material: StudioMaterial): Promise<void> {
+  const asset = assetFor(material)
+  if (!asset) return
+  const popup = window.open('about:blank', '_blank')
+  if (popup) popup.opener = null
   try {
-    const saved = await textureRepository.replaceTexturePixels(selectedAsset.value.id, await canvasBlob(canvas.value), canvas.value.width, canvas.value.height)
-    assets.value = assets.value.map((entry) => entry.id === saved.id ? saved : entry)
-    dirty.value = false
-    toasts.push({ type: 'success', message: locale.t('Texture saved') })
-  } finally {
-    busy.value = false
+    const data = await blobDataUrl(asset.blob)
+    const params = new URLSearchParams({ loadtype: 'image', loadname: asset.name, loaddata: data })
+    const url = `${BLOCKBENCH_WEB_URL}?${params.toString()}`
+    if (url.length < 60_000 && popup) popup.location.replace(url)
+    else {
+      if (popup) popup.location.replace(BLOCKBENCH_WEB_URL)
+      downloadBlob(asset.blob, `${asset.name}.${asset.mimeType === 'image/png' ? 'png' : 'jpg'}`)
+      toasts.push({ type: 'info', message: locale.t('The image was downloaded. Import it into Blockbench to edit it.') })
+    }
+  } catch (error) {
+    popup?.close()
+    toasts.push({ type: 'error', message: toAppError(error, locale.t('This image could not be opened.')).userMessage })
   }
 }
 
-async function removeSelected(): Promise<void> {
-  if (!selectedMaterial.value) return
-  await textureRepository.deleteMaterial(selectedMaterial.value.id)
-  materials.value = materials.value.filter((entry) => entry.id !== selectedMaterialId.value)
-  assets.value = await textureRepository.listTextureAssets(props.projectId)
-  selectedMaterialId.value = materials.value[0]?.id ?? ''
-  toasts.push({ type: 'success', message: locale.t('Material deleted') })
+function editSelectedInBlockbench(): void {
+  if (selected.value) void editInBlockbench(selected.value)
 }
 </script>
 
 <template>
   <main class="materials-view">
-    <header class="topbar">
-      <IconButton icon="arrow-left" :label="locale.t('Back to project workspace')" @click="router.push({ name: 'workspace', params: { id: projectId } })" />
-      <div><strong>{{ locale.t('Materials') }}</strong><small>{{ project?.name ?? locale.t('Project') }}</small></div>
-      <IconButton icon="plus" :label="locale.t('Create Material')" variant="surface" @click="openCreate" />
-    </header>
+    <StudioPageHeader :title="locale.t('Materials')" :subtitle="project?.name" :eyebrow="locale.t('Reusable image library')" icon="image">
+      <template #actions>
+        <button class="header-action" type="button" :aria-label="locale.t('New Folder')" @click="folderOpen = true"><AppIcon name="folder-plus" :size="21" /></button>
+        <button class="header-action header-action--primary" type="button" :aria-label="locale.t('Import images')" @click="importInput?.click()"><AppIcon name="upload" :size="21" /></button>
+      </template>
+    </StudioPageHeader>
 
-    <section v-if="loading" class="state"><div class="spinner" /><strong>{{ locale.t('Loading Materials…') }}</strong></section>
-    <section v-else-if="loadError || !project" class="state"><AppIcon name="alert-triangle" :size="34" /><h1>{{ locale.t('Materials unavailable') }}</h1><p>{{ loadError }}</p></section>
+    <div class="materials-body">
+      <section v-if="projectLoading || loading" class="state">{{ locale.t('Loading Materials…') }}</section>
+      <section v-else-if="projectError || loadError || !project" class="state state--error">{{ projectError || loadError }}</section>
+      <template v-else>
+        <section class="material-intro">
+          <div><strong>{{ locale.t('Project material memory') }}</strong><p>{{ locale.t('Import each texture once, reuse it in blocks and models, and send it to Blockbench when it needs editing.') }}</p></div>
+          <button type="button" :disabled="busy" @click="importInput?.click()"><AppIcon name="image-plus" :size="19" />{{ locale.t('Import PNG/JPG') }}</button>
+        </section>
 
-    <section v-else class="materials-shell">
-      <header class="library-heading"><div><small>{{ locale.t('Project Library') }}</small><strong>{{ materials.length }} {{ locale.t('materials') }}</strong></div><button type="button" @click="openCreate">+ {{ locale.t('New') }}</button></header>
-
-      <div v-if="materials.length" class="material-ribbon">
-        <button v-for="material in materials" :key="material.id" type="button" class="material-card" :class="{ active: selectedMaterialId === material.id }" @click="selectedMaterialId = material.id">
-          <MaterialSwatch :blob="assetFor(material)?.blob" :size="56" />
-          <span><strong>{{ material.name }}</strong><small>{{ assetFor(material) ? `${assetFor(material)!.width}×${assetFor(material)!.height}` : locale.t('No texture') }}</small></span>
-        </button>
-      </div>
-      <div v-else class="empty"><MaterialSwatch :size="62" /><strong>{{ locale.t('No materials yet') }}</strong><p>{{ locale.t('Create the first reusable texture material for this project.') }}</p><button type="button" @click="openCreate">+ {{ locale.t('Create Material') }}</button></div>
-
-      <section v-if="selectedMaterial" class="quick-editor">
-        <header class="selected-head">
-          <MaterialSwatch :blob="selectedAsset?.blob" :size="64" />
-          <div><small>{{ locale.t('Quick Edit') }}</small><strong>{{ selectedMaterial.name }}</strong><span><code>{{ selectedMaterial.identifier }}</code></span></div>
-          <button type="button" class="danger" @click="removeSelected">{{ locale.t('Delete') }}</button>
-        </header>
-
-        <div class="material-actions">
-          <button type="button" @click="openImport">{{ locale.t('Import Texture') }}</button>
-          <button v-if="!selectedAsset" type="button" @click="createBlank(32)">{{ locale.t('New 32×32') }}</button>
-          <button v-else type="button" @click="fitCanvas">{{ locale.t('Fit') }}</button>
-          <output v-if="selectedAsset">{{ Math.round(zoom * 100) }}%</output>
+        <div class="library-tools">
+          <label><AppIcon name="search" :size="19" /><input v-model="query" type="search" :placeholder="locale.t('Search materials')" /></label>
+          <button type="button" @click="folderOpen = true"><AppIcon name="folder-plus" :size="19" />{{ locale.t('Folder') }}</button>
+          <button v-if="activeFolder" type="button" :aria-label="locale.t('Folder actions')" @click="openFolderActions"><AppIcon name="more-vertical" :size="19" /></button>
         </div>
+        <div v-if="folders.length" class="folder-tabs"><button type="button" :class="{active:folderFilter==='all'}" @click="folderFilter='all'">{{ locale.t('All') }}</button><button type="button" :class="{active:folderFilter==='root'}" @click="folderFilter='root'">{{ locale.t('Root') }}</button><button v-for="folder in folders" :key="folder.id" type="button" :class="{active:folderFilter===folder.id}" @click="folderFilter=folder.id">{{ folder.name }}</button></div>
 
-        <template v-if="selectedAsset">
-          <nav class="paint-tools">
-            <button v-for="entry in ['pencil', 'eraser', 'fill', 'eyedropper', 'inspect'] as const" :key="entry" type="button" :class="{ active: tool === entry }" @click="tool = entry">{{ locale.t(entry[0]!.toUpperCase() + entry.slice(1)) }}</button>
-            <span class="spacer" />
-            <button type="button" :disabled="!history.length" @click="undo">↶</button>
-            <button type="button" :disabled="!future.length" @click="redo">↷</button>
-          </nav>
-          <div class="paint-options"><label>{{ locale.t('Color') }}<input v-model="color" type="color" /></label><label>{{ locale.t('Pixel') }}<select v-model.number="pixelSize"><option :value="1">1 px</option><option :value="2">2 px</option><option :value="4">4 px</option><option :value="8">8 px</option></select></label></div>
-          <div class="canvas-stage">
-            <div ref="canvasScroll" class="canvas-scroll">
-              <canvas ref="canvas" :style="{ width: `${(canvas?.width || 32) * zoom}px`, height: `${(canvas?.height || 32) * zoom}px` }" @pointerdown="pointerDown" @pointermove="pointerMove" @pointerup="pointerUp" @pointercancel="pointerUp" />
-            </div>
-            <div v-if="pixelInfo" class="pixel-readout">X {{ pixelInfo.x }} · Y {{ pixelInfo.y }} · {{ pixelInfo.color }} · A {{ pixelInfo.alpha }}</div>
-          </div>
-          <footer class="editor-footer"><span>{{ selectedAsset.width }}×{{ selectedAsset.height }} · {{ locale.t('Pinch to zoom') }}</span><button type="button" :disabled="!dirty || busy" @click="saveQuickEdit">{{ locale.t('Save PNG') }}</button></footer>
-        </template>
-        <div v-else class="no-texture"><strong>{{ locale.t('This material is ready for a texture') }}</strong><p>{{ locale.t('Import PNG/JPEG or create a blank pixel canvas.') }}</p></div>
-      </section>
-    </section>
+        <section v-if="filteredMaterials.length" class="material-grid">
+          <article v-for="material in filteredMaterials" :key="material.id" class="material-card">
+            <button type="button" class="material-card__main" @click="openActions(material)"><MaterialSwatch :blob="assetFor(material)?.blob" :size="86" /><span><strong>{{ material.name }}</strong><code>{{ material.identifier }}</code><small v-if="assetFor(material)">{{ assetFor(material)!.width }}×{{ assetFor(material)!.height }} · {{ assetFor(material)!.mimeType.replace('image/','').toUpperCase() }}</small><small v-else>{{ locale.t('No image') }}</small></span></button>
+            <button v-if="assetFor(material)" type="button" class="material-card__edit" @click="editInBlockbench(material)"><AppIcon name="external-link" :size="17" />{{ locale.t('Edit in Blockbench') }}</button>
+          </article>
+        </section>
+        <section v-else class="empty"><span><AppIcon name="image" :size="34" /></span><h2>{{ locale.t('No materials here') }}</h2><p>{{ locale.t('Import PNG or JPG files from Photos or Files. Addons Studio does not include a duplicate paint editor anymore.') }}</p><AppButton size="large" @click="importInput?.click()">{{ locale.t('Import images') }}</AppButton></section>
+      </template>
+    </div>
 
-    <input ref="importInput" class="visually-hidden" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" @change="importTexture" />
-    <AppDialog :open="createOpen" :title="locale.t('Create Material')" :description="locale.t('Materials are reusable across every model in this project.')" @close="createOpen = false"><label class="dialog-field">{{ locale.t('Material Name') }}<input v-model="materialName" class="text-input" maxlength="80" autocomplete="off" @keydown.enter.prevent="createMaterial" /></label><template #actions><AppButton variant="ghost" @click="createOpen = false">{{ locale.t('Cancel') }}</AppButton><AppButton :loading="busy" @click="createMaterial">{{ locale.t('Create Material') }}</AppButton></template></AppDialog>
+    <input ref="importInput" class="visually-hidden" type="file" multiple accept="image/png,image/jpeg,.png,.jpg,.jpeg" @change="importImages" />
+    <input ref="replaceInput" class="visually-hidden" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" @change="replaceImage" />
+
+    <AppDialog :open="folderOpen" :title="locale.t('New Material Folder')" @close="folderOpen = false"><label class="field">{{ locale.t('Folder Name') }}<input v-model="folderName" maxlength="80" @keydown.enter.prevent="createFolder" /></label><template #actions><AppButton variant="ghost" @click="folderOpen=false">{{ locale.t('Cancel') }}</AppButton><AppButton @click="createFolder">{{ locale.t('Create Folder') }}</AppButton></template></AppDialog>
+
+    <AppDialog :open="actionsOpen" :title="locale.t('Material details')" @close="actionsOpen=false">
+      <div v-if="selected" class="material-detail"><MaterialSwatch :blob="assetFor(selected)?.blob" :size="96" /><p><strong>{{ selected.name }}</strong><code>{{ selected.identifier }}</code><small>{{ usageCount }} {{ locale.t('resource uses') }}</small></p></div>
+      <div class="usage-list"><strong>{{ locale.t('Used by') }}</strong><ul v-if="usageItems.length"><li v-for="item in usageItems" :key="item">{{ item }}</li></ul><small v-else>{{ locale.t('No project resources use this material yet.') }}</small></div>
+      <label class="field">{{ locale.t('Name') }}<input v-model="editName" maxlength="80" /></label>
+      <label class="field">{{ locale.t('Folder') }}<select v-model="editFolder"><option value="">{{ locale.t('Root') }}</option><option v-for="folder in folders" :key="folder.id" :value="folder.id">{{ folder.name }}</option></select></label>
+      <div class="action-list"><button type="button" @click="replaceSelected"><AppIcon name="upload" :size="19" />{{ locale.t('Replace image') }}</button><button type="button" @click="duplicateSelected"><AppIcon name="copy" :size="19" />{{ locale.t('Duplicate') }}</button><button v-if="selected && assetFor(selected)" type="button" @click="editSelectedInBlockbench"><AppIcon name="external-link" :size="19" />{{ locale.t('Edit in Blockbench') }}</button><button type="button" class="danger" @click="deleteSelected"><AppIcon name="trash" :size="19" />{{ locale.t('Delete') }}</button></div>
+      <template #actions><AppButton variant="ghost" @click="actionsOpen=false">{{ locale.t('Cancel') }}</AppButton><AppButton @click="saveActions">{{ locale.t('Save') }}</AppButton></template>
+    </AppDialog>
+
+    <AppDialog :open="folderActionsOpen" :title="locale.t('Folder actions')" @close="folderActionsOpen=false">
+      <label class="field">{{ locale.t('Folder Name') }}<input v-model="editFolderName" maxlength="80" /></label>
+      <div class="action-list"><button type="button" class="danger" @click="deleteActiveFolder"><AppIcon name="trash" :size="19" />{{ locale.t('Delete folder and move contents to Root') }}</button></div>
+      <template #actions><AppButton variant="ghost" @click="folderActionsOpen=false">{{ locale.t('Cancel') }}</AppButton><AppButton @click="renameActiveFolder">{{ locale.t('Save') }}</AppButton></template>
+    </AppDialog>
   </main>
 </template>
 
 <style scoped>
-.materials-view { min-height:100dvh; background:var(--color-app-bg); }.topbar { position:sticky; z-index:20; top:0; min-height:calc(var(--header-height) + env(safe-area-inset-top)); display:grid; grid-template-columns:var(--touch-target) minmax(0,1fr) var(--touch-target); align-items:center; gap:.45rem; padding:env(safe-area-inset-top) max(.6rem,env(safe-area-inset-right)) 0 max(.6rem,env(safe-area-inset-left)); border-bottom:1px solid var(--color-border); background:color-mix(in srgb,var(--color-app-bg) 95%,transparent); backdrop-filter:blur(18px); }.topbar>div { min-width:0; display:grid; text-align:center; }.topbar strong,.topbar small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.topbar strong { font-size:.84rem; }.topbar small { color:var(--color-text-subtle); font-size:.62rem; }.state { min-height:70dvh; display:grid; place-items:center; align-content:center; gap:.5rem; padding:2rem; text-align:center; }.state p { color:var(--color-text-subtle); }.spinner { width:2rem; height:2rem; border:3px solid var(--color-border); border-top-color:var(--color-accent); border-radius:50%; animation:spin .75s linear infinite; }@keyframes spin{to{transform:rotate(360deg)}}
-.materials-shell { width:min(100%,64rem); margin:0 auto; padding-bottom:calc(1rem + env(safe-area-inset-bottom)); }.library-heading { min-height:3.5rem; display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:.55rem .75rem; }.library-heading>div { display:grid; }.library-heading small { color:var(--color-accent); font-size:.58rem; font-weight:850; text-transform:uppercase; letter-spacing:.08em; }.library-heading strong { font-size:.78rem; }.library-heading button,.empty button { min-height:2.55rem; border:1px solid var(--color-border); border-radius:.72rem; padding:0 .75rem; background:var(--color-surface); color:var(--color-accent); font-size:.68rem; font-weight:800; }
-.material-ribbon { display:flex; gap:.55rem; overflow-x:auto; padding:.2rem .75rem .8rem; scrollbar-width:none; }.material-ribbon::-webkit-scrollbar { display:none; }.material-card { flex:0 0 10rem; min-height:5.6rem; display:flex; align-items:center; gap:.6rem; border:1px solid var(--color-border); border-radius:1rem; padding:.55rem; background:var(--color-surface); color:var(--color-text); text-align:left; }.material-card.active { border-color:var(--color-accent); background:color-mix(in srgb,var(--color-accent) 10%,var(--color-surface)); box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--color-accent) 25%,transparent); }.material-card>span:last-child { min-width:0; display:grid; gap:.1rem; }.material-card strong,.material-card small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.material-card strong { font-size:.72rem; }.material-card small { color:var(--color-text-subtle); font-size:.59rem; }.empty { min-height:13rem; display:grid; place-items:center; align-content:center; gap:.4rem; padding:1rem; text-align:center; }.empty p,.no-texture p { margin:0; color:var(--color-text-subtle); font-size:.68rem; }
-.quick-editor { overflow:hidden; margin:0 .7rem; border:1px solid var(--color-border); border-radius:1.1rem; background:color-mix(in srgb,var(--color-surface) 96%,#000); box-shadow:0 15px 40px #0003; }.selected-head { min-height:5.4rem; display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:.7rem; padding:.65rem .7rem; border-bottom:1px solid var(--color-border); }.selected-head>div { min-width:0; display:grid; gap:.08rem; }.selected-head small { color:var(--color-accent); font-size:.58rem; font-weight:850; text-transform:uppercase; }.selected-head strong,.selected-head span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.selected-head strong { font-size:.82rem; }.selected-head span { color:var(--color-text-subtle); font-size:.6rem; }.danger { min-height:2.55rem; border:1px solid #d85c5c55; border-radius:.7rem; padding:0 .6rem; background:#38181844; color:#ef9292; font-size:.65rem; font-weight:780; }
-.material-actions,.paint-options { display:flex; align-items:center; gap:.4rem; overflow-x:auto; padding:.45rem .6rem; border-bottom:1px solid var(--color-border); }.material-actions button,.paint-options button { flex:0 0 auto; min-height:2.55rem; border:1px solid var(--color-border); border-radius:.7rem; padding:0 .7rem; background:var(--color-input-bg); color:var(--color-text); font-size:.66rem; font-weight:780; }.material-actions output { flex:0 0 auto; color:var(--color-text-subtle); font-family:var(--font-mono); font-size:.62rem; }.paint-tools { display:flex; align-items:center; gap:.3rem; overflow-x:auto; padding:.45rem .55rem; border-bottom:1px solid var(--color-border); scrollbar-width:none; }.paint-tools::-webkit-scrollbar { display:none; }.paint-tools button { flex:0 0 auto; min-height:2.5rem; border:1px solid var(--color-border); border-radius:.65rem; padding:0 .62rem; background:var(--color-input-bg); color:var(--color-text-subtle); font-size:.64rem; font-weight:780; }.paint-tools button.active { border-color:var(--color-accent); background:color-mix(in srgb,var(--color-accent) 12%,var(--color-input-bg)); color:var(--color-accent); }.spacer { flex:1 0 .5rem; }.paint-options label { flex:0 0 auto; display:flex; align-items:center; gap:.35rem; color:var(--color-text-subtle); font-size:.62rem; }.paint-options input[type='color'] { width:2.5rem; height:2.5rem; border:0; border-radius:.65rem; padding:.2rem; background:var(--color-input-bg); }.paint-options select { min-height:2.5rem; border:1px solid var(--color-border); border-radius:.65rem; padding:0 .55rem; background:var(--color-input-bg); color:var(--color-text); font-size:16px; }
-.canvas-stage { position:relative; height:min(52dvh,30rem); min-height:16rem; overflow:hidden; background:#0b0f0d; }.canvas-scroll { width:100%; height:100%; display:grid; place-items:start center; overflow:auto; padding:1rem; overscroll-behavior:contain; background-image:linear-gradient(45deg,#1d231f 25%,transparent 25%),linear-gradient(-45deg,#1d231f 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#1d231f 75%),linear-gradient(-45deg,transparent 75%,#1d231f 75%); background-size:20px 20px; background-position:0 0,0 10px,10px -10px,-10px 0; }.canvas-scroll canvas { display:block; max-width:none; border:1px solid #ffffff24; image-rendering:pixelated; touch-action:none; box-shadow:0 12px 38px #0008; }.pixel-readout { position:absolute; right:.6rem; bottom:.6rem; border:1px solid #ffffff18; border-radius:999px; padding:.28rem .48rem; background:#080c0add; color:#b9f3ca; font-family:var(--font-mono); font-size:.58rem; }.editor-footer { min-height:3rem; display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:.4rem .6rem; border-top:1px solid var(--color-border); color:var(--color-text-subtle); font-size:.61rem; }.editor-footer button { min-height:2.55rem; border:1px solid var(--color-accent); border-radius:.7rem; padding:0 .75rem; background:color-mix(in srgb,var(--color-accent) 14%,transparent); color:var(--color-accent); font-size:.66rem; font-weight:800; }.editor-footer button:disabled { opacity:.4; }.no-texture { min-height:12rem; display:grid; place-items:center; align-content:center; gap:.35rem; padding:1rem; text-align:center; }
-.dialog-field { display:grid; gap:.35rem; color:var(--color-text-muted); font-size:.72rem; font-weight:700; }.text-input { min-height:var(--touch-target); border:1px solid var(--color-border-strong); border-radius:var(--radius-md); padding:0 .75rem; background:var(--color-input-bg); color:var(--color-text); font-size:16px; }.visually-hidden { position:fixed; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
-@media (max-width:380px){.material-card{flex-basis:8.8rem}.selected-head{grid-template-columns:auto minmax(0,1fr)}.selected-head .danger{grid-column:1/-1}.canvas-stage{height:46dvh}}
+.materials-body{width:min(100%,var(--content-max));margin:0 auto;padding:1rem max(var(--page-gutter),env(safe-area-inset-right)) 2rem max(var(--page-gutter),env(safe-area-inset-left))}.header-action{width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface);color:var(--color-text)}.header-action--primary{border-color:var(--color-accent);background:var(--color-accent);color:var(--color-on-accent)}.state{min-height:50dvh;display:grid;place-items:center;color:var(--color-text-subtle)}.state--error{color:var(--color-danger)}.material-intro{display:grid;gap:.8rem;border:1px solid var(--color-border);border-radius:var(--radius-xl);padding:1rem;background:var(--color-surface)}.material-intro strong{font-size:.9rem}.material-intro p{margin:.25rem 0 0;color:var(--color-text-subtle);font-size:.69rem;line-height:1.5}.material-intro button{min-height:44px;display:flex;align-items:center;justify-content:center;gap:.5rem;border:0;border-radius:var(--radius-md);padding:0 1rem;background:var(--color-accent);color:var(--color-on-accent);font-size:.72rem;font-weight:850}.library-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.55rem;margin:1rem 0 .75rem}.library-tools label{min-height:44px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:.55rem;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:0 .75rem;background:var(--color-input-bg);color:var(--color-text-subtle)}.library-tools input{min-width:0;border:0;outline:0;background:transparent;color:var(--color-text);font:inherit;font-size:16px}.library-tools>button{min-height:44px;display:flex;align-items:center;gap:.4rem;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:0 .75rem;background:var(--color-surface);color:var(--color-text);font-size:.68rem;font-weight:800}.folder-tabs{display:flex;gap:.4rem;overflow-x:auto;margin-bottom:.8rem;scrollbar-width:none}.folder-tabs button{flex:none;min-height:40px;border:1px solid var(--color-border);border-radius:var(--radius-pill);padding:0 .75rem;background:var(--color-surface);color:var(--color-text-subtle);font-size:.65rem;font-weight:750}.folder-tabs button.active{border-color:var(--color-accent);background:var(--color-accent-soft);color:var(--color-accent-strong)}.material-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}.material-card{min-width:0;overflow:hidden;border:1px solid var(--color-border);border-radius:var(--radius-xl);background:var(--color-surface);box-shadow:var(--shadow-card)}.material-card__main{width:100%;min-height:9.5rem;display:grid;place-items:center;align-content:center;gap:.55rem;border:0;padding:.8rem;background:transparent;color:var(--color-text);text-align:center}.material-card__main>span:last-child{min-width:0;width:100%;display:grid;gap:.12rem}.material-card strong,.material-card code,.material-card small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.material-card strong{font-size:.76rem}.material-card code{color:var(--color-text-subtle);font-size:.55rem}.material-card small{color:var(--color-text-subtle);font-size:.57rem}.material-card__edit{width:100%;min-height:44px;display:flex;align-items:center;justify-content:center;gap:.35rem;border:0;border-top:1px solid var(--color-border);background:var(--color-surface-raised);color:var(--color-text-muted);font-size:.62rem;font-weight:800}.empty{min-height:45dvh;display:grid;place-items:center;align-content:center;gap:.45rem;text-align:center}.empty>span{width:4.3rem;height:4.3rem;display:grid;place-items:center;border-radius:var(--radius-xl);background:var(--color-accent-soft);color:var(--color-accent-strong)}.empty h2{margin:.5rem 0 0;font-size:1rem}.empty p{max-width:29rem;margin:0 0 .7rem;color:var(--color-text-subtle);font-size:.7rem;line-height:1.5}.material-detail{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:.75rem;margin-bottom:.8rem}.material-detail p{min-width:0;display:grid;gap:.15rem;margin:0}.material-detail strong,.material-detail code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.material-detail code,.material-detail small{color:var(--color-text-subtle);font-size:.62rem}.field{display:grid;gap:.35rem;color:var(--color-text-muted);font-size:.7rem;font-weight:750}.field input,.field select{min-height:44px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:0 .75rem;background:var(--color-input-bg);color:var(--color-text);font:inherit;font-size:16px}.action-list{display:grid;gap:.4rem;margin-top:.8rem}.action-list button{min-height:44px;display:flex;align-items:center;gap:.55rem;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:0 .75rem;background:var(--color-surface-raised);color:var(--color-text);font-size:.7rem;font-weight:750}.action-list .danger{border-color:var(--color-danger-border);background:var(--color-danger-soft);color:var(--color-danger)}.visually-hidden{position:fixed;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}@media(min-width:680px){.material-intro{grid-template-columns:minmax(0,1fr) auto;align-items:center}.material-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(min-width:1000px){.material-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.usage-list{display:grid;gap:.35rem;margin:.2rem 0 .8rem;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:.7rem;background:var(--color-surface-muted)}.usage-list>strong{font-size:.68rem}.usage-list ul{display:grid;gap:.25rem;margin:0;padding-left:1rem;color:var(--color-text-muted);font-size:.64rem}.usage-list>small{color:var(--color-text-subtle);font-size:.63rem;line-height:1.4}
 </style>

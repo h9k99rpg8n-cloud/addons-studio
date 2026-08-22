@@ -22,12 +22,12 @@ function continueTo(routeName: 'create-project' | 'projects'): void {
   <main class="welcome-view">
     <section class="welcome-view__hero">
       <div class="welcome-view__mark"><BrandMark :size="78" /></div>
-      <p class="eyebrow">{{ locale.t('Your Bedrock workspace') }}</p>
+      <p class="eyebrow">{{ locale.t('The professional Bedrock workspace') }}</p>
       <h1>Addons Studio</h1>
       <span class="welcome-view__release">{{ APP_RELEASE_LABEL }}</span>
-      <p class="welcome-view__subtitle">{{ locale.t('Create Bedrock without limits.') }}</p>
+      <p class="welcome-view__subtitle">{{ locale.t('Build addons. Keep your workflow.') }}</p>
       <p class="welcome-view__description">
-        {{ locale.t('Create Minecraft Bedrock projects directly from your mobile browser.') }}
+        {{ locale.t('Organize resources, generate Bedrock files, and connect the right creative tools from any device.') }}
       </p>
 
       <div class="welcome-view__actions">

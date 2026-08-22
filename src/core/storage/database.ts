@@ -9,6 +9,7 @@ import type {
   StudioSetting,
 } from '@/types/project'
 import type { StudioMaterial, StudioTextureAsset, StudioTextureBinding } from '@/types/texture'
+import type { StudioResource, StudioResourceAsset, StudioResourceFolder } from '@/types/resource'
 
 export const DATABASE_NAME = 'addons-studio'
 
@@ -24,6 +25,9 @@ export class AddonsStudioDatabase extends Dexie {
   textureAssets!: Table<StudioTextureAsset, string>
   materials!: Table<StudioMaterial, string>
   textureBindings!: Table<StudioTextureBinding, string>
+  resources!: Table<StudioResource, string>
+  resourceFolders!: Table<StudioResourceFolder, string>
+  resourceAssets!: Table<StudioResourceAsset, string>
 
   constructor(name = DATABASE_NAME) {
     super(name)
@@ -75,8 +79,11 @@ export class AddonsStudioDatabase extends Dexie {
       modelReferenceAssets: '&id, modelId, projectId, createdAt, [modelId+createdAt]',
       modelEditorAssets: '&id, modelId, projectId, kind, createdAt, [modelId+kind], [modelId+createdAt]',
       textureAssets: '&id, projectId, updatedAt, [projectId+updatedAt]',
-      materials: '&id, projectId, identifier, updatedAt, [projectId+updatedAt], [projectId+identifier]',
+      materials: '&id, projectId, folderId, identifier, updatedAt, [projectId+updatedAt], [projectId+identifier]',
       textureBindings: '&id, modelId, projectId, cubeId, materialId, updatedAt, [modelId+cubeId], [modelId+materialId]',
+      resources: '&id, projectId, type, folderId, updatedAt, [projectId+type], [projectId+updatedAt], [projectId+type+updatedAt]',
+      resourceFolders: '&id, projectId, resourceType, parentId, name, [projectId+resourceType]',
+      resourceAssets: '&id, projectId, resourceId, kind, updatedAt, [projectId+kind], [projectId+updatedAt]',
     })
   }
 }

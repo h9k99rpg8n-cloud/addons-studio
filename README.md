@@ -1,88 +1,60 @@
 # Addons Studio
 
-Addons Studio is a free and open-source, mobile-first web application for creating Minecraft Bedrock Edition add-ons. The long-term goal is a complete creative environment that works directly from a phone, tablet, or desktop browser without assuming a mouse or desktop filesystem.
+Addons Studio is a free, open-source, mobile-first workspace for building Minecraft Bedrock Edition add-ons. It organizes project resources, guides common authoring tasks, and generates Bedrock files without requiring users to write JSON for routine work.
 
-> **Current release:** Alpha `0.0.4.3` · Texture Core Stability Update
+> **Current release:** Alpha `0.1.0` · Rework Update
 
 Addons Studio is an independent community project and is not affiliated with Mojang Studios or Microsoft. Minecraft is a trademark of Microsoft Corporation.
 
-## Alpha 0.0.4.3
+## Rework Update
 
-This release closes the first Texture Core development era with a focused stability, mobile-input, performance, persistence, and regression-fixing pass. It deliberately adds no large creative system before the Materials phase.
+The Rework Update changes the product direction deliberately. Addons Studio is no longer trying to reproduce every specialized creative editor in one browser tab. It is the project hub that connects Bedrock resources, reusable logic, generated files, and purpose-built tools.
 
-### Texture Core
+### What works now
 
-- Project-scoped reusable materials with locally persisted PNG/JPEG texture assets and model-specific face bindings.
-- UV 2.0 visual atlas editing, synchronized cube/face selection, multi-face selection, Auto Box UV, 0.25/0.5/1/2/4 px precision, Copy/Paste, Rotate, Flip, Fit, and Reset.
-- Paint 2.0 Pencil, Eraser, Fill, Eyedropper, Line, Rectangle, Replace Color, opacity, pixel grid, exact X/Y mirroring, 64-step deduplicated history, pinch zoom, and two-finger pan.
-- Lightweight Three.js textured-cuboid preview with face raycasting, selected-face feedback, model fitting, nearest-neighbor filtering, and on-demand rendering.
-- Transactional IndexedDB storage for materials, immutable texture blobs, and per-face UV bindings without embedding binary data in model JSON.
+- A new original yellow-and-graphite identity, application icon, favicon, and PWA icon family.
+- Responsive Home, Create, Assets, Code, World, and Project navigation designed for touch, safe areas, portrait, landscape, tablet, and desktop.
+- Local project creation, folders, pinning, recent activity, duplication, safe deletion, recovery snapshots, and IndexedDB persistence.
+- A portable Models library with search, folders, `.json`, `.geo.json`, and `.bbmodel` import, download, metadata preview, and Blockbench handoff.
+- A project-level Materials image library with PNG/JPEG import, preview, folders, rename, duplicate, move, delete, usage details, and Blockbench handoff.
+- Guided standard Block and Block Model creation with identifiers, localized display names, texture modes, lighting, contextual physical properties, a lightweight cube preview, and ZIP export of generated Bedrock source files.
+- Versioned `.addonsstudio` package import/export with transactional ID remapping for projects, legacy model records, Rework resources, folders, material images, and bindings.
+- English and Spanish UI, light/dark/system themes, installable PWA shell, and GitHub Pages base-path support.
 
-### Stability work
+### Specialized-tool integration
 
-- UV rectangles are normalized against the active atlas after every gesture or command; non-finite legacy values and texture-size changes repair safely without a destructive database migration.
-- UV writes are coalesced per binding, unchanged records are skipped, multi-face assignment is atomic, and navigation waits for pending UV/Paint persistence.
-- Fast Paint strokes use coalesced pointer samples plus pixel-line interpolation, while a touch deadzone prevents taps and pinch gestures from creating accidental marks.
-- Paint persistence targets the exact source texture asset even when the user switches cube, face, material, model, or mode quickly.
-- Safari pointer capture/cancellation, safe areas, 16 px editable controls, 44 px touch targets, landscape sizing, overflow, context menus, and page-scroll conflicts received focused hardening.
-- Project/model deletion and project duplication now preserve the ownership rules for project materials, texture assets, and model-specific bindings.
+Blockbench is the primary modeling, UV, texturing, and animation tool. Addons Studio stores and organizes compatible files, prepares Bedrock geometry, and opens the official Blockbench web application using its documented URL parameters. Large files fall back to a safe download-and-open workflow.
 
-### Preserved Model Core
+No Blockbench source code or GPL source from Blockbench, bridge., Snowstorm, or another application is copied or bundled. The integration is an external handoff to the user-selected tool; Addons Studio remains an original MIT-licensed implementation.
 
-- Lazy-loaded Three.js Model Studio with a Bedrock-unit grid, lighting, standard camera views, one/two viewport layouts, temporary maximize, and lower-power secondary rendering.
-- Multiple cuboids with exact transforms, custom Addons Studio Move/Rotate/Resize/Pivot gizmos, adaptive screen-space gizmo sizing, and larger invisible finger hit targets.
-- Correct center-preserving and positive/negative directional Resize with pointer-discontinuity and giant-transform spike protection.
-- Official Touch Gizmo Move, Resize, and Rotate plus Hybrid and Classic Gizmo control modes.
-- Global / Local / Parent transform spaces and independent Move/Resize/Rotate precision.
-- Multi-selection, structural Groups, organizational Model Folders, pivots, visibility, locking, isolation, Mirror, Align, Distribute, Duplicate, Duplicate Again, and Inflate fitting.
-- Command-based undo/redo and debounced model autosave.
-- Original Studio Preview Material 2.0 for untextured cuboids; Texture Core owns real texture authoring and its isolated preview.
-- Background / Guide workflow with Dark Studio, Sky, Night, Sunset, Snow, custom backgrounds, and viewport-aligned PNG/JPG modeling guides.
-- Canonical validated Addons Studio `.model.json` export and adapter-based import for Studio JSON and compatible Minecraft Bedrock geometry JSON.
+### Honest scope
 
-### Modular runtime
+The following areas are represented only by product architecture until reliable workflows are implemented:
 
-Model Studio no longer concentrates its complete Three.js implementation in one viewport file. Alpha `0.0.3.6.3` introduces focused runtime modules for:
+- Items, Entities, and Plants
+- reusable visual Plugins and Functions
+- the central Recipes library
+- Particles, Sounds, and Animations integrations
+- Trees, Biomes, Structures, Ore Generation, and Dimensions
+- complete `.mcpack` / `.mcaddon` builds
 
-- scene/WebGL lifecycle
-- camera controls and views
-- cuboid mesh synchronization
-- classic gizmos
-- Touch Gizmo transforms
-- Inflate visualization and picking
-- shared viewport math/deadzone behavior
-- selection helpers
-- preview-material/resource lifetime
-- Background / Guide composition
+Unavailable tools are never presented as working buttons. The main Create, Assets, and Code hubs may show clearly labeled, non-interactive roadmap modules so the product structure remains understandable; World tools stay hidden until they generate valid Bedrock content.
 
-`StudioModel` remains the renderer-independent source of truth. Three.js objects are runtime-only and stay outside persistent model data and deep Vue reactivity.
+## Product philosophy
 
-### Projects and portability
+- Make Bedrock creation understandable without forcing users to edit JSON for common tasks.
+- Prefer contextual, vertical workflows over giant forms containing every possible component.
+- Treat Blockbench and other specialist tools as integrations, not competitors.
+- Keep resources reusable across blocks, items, entities, recipes, and future Plugins.
+- Preserve local work before expanding scope.
+- Never silently reset IndexedDB or overwrite imported project IDs.
+- Keep every important interaction usable without hover, a mouse, or a desktop file-system API.
 
-- Local project creation with validated namespaces and maintained Bedrock target versions.
-- IndexedDB persistence through Dexie, debounced autosave, bounded recovery snapshots, project folders, recent projects, rename, duplicate, and safe delete.
-- Transactional `.addonsstudio` project package import/export beta with manifest validation, project preview, ID remapping, folder preservation, editor assets, storage checks, and rollback.
-- Dedicated binary editor-asset storage instead of large base64 blobs inside model metadata.
+## Storage and compatibility
 
-### Mobile-first
+Project metadata, folders, imported files, texture images, generated resources, settings, and recovery data are stored in IndexedDB through Dexie. Binary files are stored as blobs rather than large base64 strings in reactive metadata.
 
-Primary targets are iPhone/Safari, Android/Chrome, iPad, Android tablets, and installed PWAs. The UI keeps touch-sized controls, safe-area support, dynamic viewport sizing, Safari-safe editable input sizes, camera locking while sheets/menus own the gesture, and deterministic pointer ownership between gizmos, geometry, Inflate, Touch Gizmo, and camera navigation.
-
-### Language and release experience
-
-- English and Spanish UI with persisted language choice.
-- Versioned What's New / Release Notes.
-- Optional local-only Developer Beta timers, routine checklist, notification fallback, and foreground usage summaries.
-
-## Not implemented yet
-
-Alpha `0.0.4.3` does **not** implement the future Materials Core, advanced mesh/vertex UV editing, layers or selection tools in Paint, Animation Core, bones, particles, audio editing, visual logic, or complete `.mcpack` / `.mcaddon` generation.
-
-The next major development phase is **Materials**. Alpha 0.0.4.3 intentionally does not start it.
-
-## Mobile-first principles
-
-The product architecture avoids desktop-only filesystem assumptions. Project metadata, folders, internal models, editor-image blobs, materials, texture assets, and UV bindings are stored in IndexedDB because the File System Access API is not consistently available on mobile Safari. Runtime object URLs are recreated for the active editor and revoked when assets leave the session; they are never treated as persistent identifiers.
+Database schema 5 adds generic Rework resource, resource-folder, and binary-asset stores. Existing Alpha `0.0.3.x` Model Core and Alpha `0.0.4.x` Texture Core records are retained for migration and project-package compatibility; their retired in-app editors are not loaded.
 
 ## Technology
 
@@ -91,19 +63,20 @@ The product architecture avoids desktop-only filesystem assumptions. Project met
 - Pinia
 - Vue Router with hash history
 - Dexie / IndexedDB
-- Three.js, lazy-loaded for Model Studio
-- fflate for versioned local project packages
+- fflate for versioned project and generated-resource ZIP files
 - `vite-plugin-pwa` / Workbox
-- Lucide for generic interface actions plus an original Addons Studio SVG product-icon family
+- Lucide for generic interface actions plus original Addons Studio SVG branding
 - Vitest + fake IndexedDB
 
-See [Architecture](docs/ARCHITECTURE.md), [Brand system](docs/BRAND.md), [0.0.4.3 release notes](docs/releases/0.0.4.3.md), and [Third-party notices](THIRD_PARTY_NOTICES.md).
+The Rework runtime no longer depends on Three.js. Specialized model editing is delegated to Blockbench.
+
+See [Architecture](docs/ARCHITECTURE.md), [Brand system](docs/BRAND.md), [Rework release notes](docs/releases/0.1.0-rework.md), and [Third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## Development
 
 Requirements:
 
-- Node.js 24 (Node 22.12 or newer is supported)
+- Node.js 22.12 or newer
 - npm
 
 ```bash
@@ -122,23 +95,11 @@ npm run build
 
 ## PWA and GitHub Pages
 
-The production build generates a web app manifest and service worker. After the application shell has loaded successfully it can launch without a network connection, while project data remains local.
+The production build generates a manifest, install assets, and an offline application shell. Project data remains local to the browser profile.
 
-GitHub Pages deploys the `dist/` production build. Vite derives the repository name during GitHub Actions and uses `/addons-studio/` as the production base. Hash routing keeps static-host deep links reliable.
+GitHub Pages deploys the `dist/` build. Vite derives the repository name during GitHub Actions and uses `/addons-studio/` as the production base. Hash routing keeps static-host navigation reliable.
 
-Expected project URL:
-
-`https://h9k99rpg8n-cloud.github.io/addons-studio/`
-
-## Project philosophy
-
-- Create original, maintainable implementations.
-- Study other tools for concepts and workflows, not for copying incompatible source, shaders, textures, or assets.
-- Keep dependencies intentional and license-compatible with the MIT project.
-- Prefer contextual creation flows over screens containing every possible Bedrock property.
-- Never present unfinished features as working.
-- Protect local work before adding ambitious editors.
-- Keep future engines isolated so Model, Texture, Animation, Particle, Audio, Visual Logic, and Add-on Builder can evolve independently.
+Expected URL: [https://h9k99rpg8n-cloud.github.io/addons-studio/](https://h9k99rpg8n-cloud.github.io/addons-studio/)
 
 ## License
 

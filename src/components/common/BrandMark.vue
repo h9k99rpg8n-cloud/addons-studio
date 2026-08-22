@@ -21,12 +21,12 @@ withDefaults(
     :aria-label="decorative ? undefined : 'Addons Studio'"
     role="img"
   >
-    <path class="brand-mark__top" d="M24 3.5 42 13.6 24 23.8 6 13.6Z" />
-    <path class="brand-mark__left" d="M6 13.6 24 23.8v20.7L6 34.3Z" />
-    <path class="brand-mark__right" d="m42 13.6-18 10.2v20.7l18-10.2Z" />
-    <path class="brand-mark__outline" d="M24 3.5 42 13.6v20.7L24 44.5 6 34.3V13.6ZM6 13.6l18 10.2 18-10.2M24 23.8v20.7" />
-    <path class="brand-mark__core" d="m24 15.7 6.8 3.8v7.7L24 31l-6.8-3.8v-7.7Z" />
-    <path class="brand-mark__core-line" d="m17.2 19.5 6.8 3.8 6.8-3.8M24 23.3V31" />
+    <rect class="brand-mark__tile" x="1" y="1" width="46" height="46" rx="11" />
+    <path class="brand-mark__tool" d="M12 9.5 38.5 36M36.5 8.5l-5 1.4-1.7 5.2 4 4 5.2-1.7 1.4-5-3.9-3.9Z" />
+    <path class="brand-mark__tool" d="m36.5 10-26 26M8.5 31.5l8 8M32.2 7.8l8 8" />
+    <path class="brand-mark__top" d="m24 16.2 10.2 5.7L24 27.7l-10.2-5.8Z" />
+    <path class="brand-mark__left" d="m13.8 21.9 10.2 5.8v11.4l-10.2-5.7Z" />
+    <path class="brand-mark__right" d="m34.2 21.9-10.2 5.8v11.4l10.2-5.7Z" />
   </svg>
 </template>
 
@@ -36,40 +36,31 @@ withDefaults(
   overflow: visible;
 }
 
-.brand-mark__top {
-  fill: var(--brand-mark-top, var(--color-brand-primary-soft));
+.brand-mark__tile { fill: #f5c518; }
+
+.brand-mark__tool {
+  fill: none;
+  stroke: #111318;
+  stroke-width: 4.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
+.brand-mark__top { fill: #fff3bd; }
+
 .brand-mark__left {
-  fill: var(--brand-mark-left, var(--color-brand-primary));
-  opacity: 0.94;
+  fill: #f0bd0e;
 }
 
 .brand-mark__right {
-  fill: var(--brand-mark-right, var(--color-brand-primary-deep));
-  opacity: 0.96;
+  fill: #cf9800;
 }
 
-.brand-mark__outline {
-  fill: none;
-  stroke: var(--brand-mark-outline, var(--color-brand-primary-strong));
-  stroke-width: 2.25;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.brand-mark__core {
-  fill: var(--brand-mark-core, var(--color-brand-secondary));
-  stroke: var(--brand-mark-core-outline, var(--color-brand-secondary-strong));
-  stroke-width: 1.9;
-  stroke-linejoin: round;
-}
-
-.brand-mark__core-line {
-  fill: none;
-  stroke: var(--brand-mark-core-outline, var(--color-brand-secondary-strong));
-  stroke-width: 1.55;
-  stroke-linecap: round;
+.brand-mark__top,
+.brand-mark__left,
+.brand-mark__right {
+  stroke: #111318;
+  stroke-width: 2.2;
   stroke-linejoin: round;
 }
 </style>

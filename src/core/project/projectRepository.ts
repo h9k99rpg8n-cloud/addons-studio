@@ -13,6 +13,7 @@ import {
   PROJECT_SCHEMA_VERSION,
 } from '@/core/project/constants'
 import { validateProjectInput, validateStoredProject } from '@/core/project/projectValidation'
+import { remapResourcePayload } from '@/core/resources/resourceReferences'
 import { type AddonsStudioDatabase, studioDatabase } from '@/core/storage/database'
 import { assertSupportedProjectSchema } from '@/core/validation/projectSchema'
 import type {
@@ -155,6 +156,9 @@ export class ProjectRepository {
         sourceTextureAssets,
         sourceMaterials,
         sourceBindings,
+        sourceResources,
+        sourceResourceFolders,
+        sourceResourceAssets,
       ] = await Promise.all([
         this.database.models.where('projectId').equals(source.id).toArray(),
         this.database.modelEditorAssets.where('projectId').equals(source.id).toArray(),
@@ -162,6 +166,9 @@ export class ProjectRepository {
         this.database.textureAssets.where('projectId').equals(source.id).toArray(),
         this.database.materials.where('projectId').equals(source.id).toArray(),
         this.database.textureBindings.where('projectId').equals(source.id).toArray(),
+        this.database.resources.where('projectId').equals(source.id).toArray(),
+        this.database.resourceFolders.where('projectId').equals(source.id).toArray(),
+        this.database.resourceAssets.where('projectId').equals(source.id).toArray(),
       ])
       const sourceAssets = [...new Map(
         [...legacyAssets, ...currentAssets].map((asset) => [asset.id, asset]),
@@ -170,6 +177,9 @@ export class ProjectRepository {
       const assetIds = new Map(sourceAssets.map((asset) => [asset.id, createId()]))
       const textureAssetIds = new Map(sourceTextureAssets.map((asset) => [asset.id, createId()]))
       const materialIds = new Map(sourceMaterials.map((material) => [material.id, createId()]))
+      const resourceIds = new Map(sourceResources.map((resource) => [resource.id, createId()]))
+      const resourceFolderIds = new Map(sourceResourceFolders.map((folder) => [folder.id, createId()]))
+      const resourceAssetIds = new Map(sourceResourceAssets.map((asset) => [asset.id, createId()]))
       const nodeMaps = new Map(sourceModels.map((model) => {
         const normalized = cloneStudioModel(model)
         return [model.id, {
@@ -261,9 +271,43 @@ export class ProjectRepository {
         textureAssetId: material.textureAssetId
           ? textureAssetIds.get(material.textureAssetId)
           : undefined,
+        folderId: material.folderId ? resourceFolderIds.get(material.folderId) : undefined,
         createdAt: now,
         updatedAt: now,
         revision: 1,
+      }))
+      const duplicatedResourceFolders = sourceResourceFolders.map((folder) => ({
+        ...folder,
+        id: resourceFolderIds.get(folder.id)!,
+        projectId: duplicate.id,
+        parentId: folder.parentId ? resourceFolderIds.get(folder.parentId) : undefined,
+        createdAt: now,
+        updatedAt: now,
+      }))
+      const duplicatedResources = sourceResources.map((resource) => {
+        return {
+          ...resource,
+          id: resourceIds.get(resource.id)!,
+          projectId: duplicate.id,
+          folderId: resource.folderId ? resourceFolderIds.get(resource.folderId) : undefined,
+          payload: remapResourcePayload(resource, {
+            resourceIds,
+            resourceAssetIds,
+            materialIds,
+          }),
+          createdAt: now,
+          updatedAt: now,
+          revision: 1,
+        }
+      })
+      const duplicatedResourceAssets = sourceResourceAssets.map((asset) => ({
+        ...asset,
+        id: resourceAssetIds.get(asset.id)!,
+        projectId: duplicate.id,
+        resourceId: asset.resourceId ? resourceIds.get(asset.resourceId) : undefined,
+        blob: asset.blob,
+        createdAt: now,
+        updatedAt: now,
       }))
       const duplicatedBindings = sourceBindings.flatMap((binding) => {
         const modelId = modelIds.get(binding.modelId)
@@ -293,6 +337,9 @@ export class ProjectRepository {
           this.database.textureAssets,
           this.database.materials,
           this.database.textureBindings,
+          this.database.resources,
+          this.database.resourceFolders,
+          this.database.resourceAssets,
         ],
         async () => {
           await this.database.projects.add(duplicate)
@@ -307,6 +354,13 @@ export class ProjectRepository {
           if (duplicatedMaterials.length) await this.database.materials.bulkAdd(duplicatedMaterials)
           if (duplicatedBindings.length) {
             await this.database.textureBindings.bulkAdd(duplicatedBindings)
+          }
+          if (duplicatedResourceFolders.length) {
+            await this.database.resourceFolders.bulkAdd(duplicatedResourceFolders)
+          }
+          if (duplicatedResources.length) await this.database.resources.bulkAdd(duplicatedResources)
+          if (duplicatedResourceAssets.length) {
+            await this.database.resourceAssets.bulkAdd(duplicatedResourceAssets)
           }
         },
       )
@@ -333,6 +387,9 @@ export class ProjectRepository {
           this.database.textureAssets,
           this.database.materials,
           this.database.textureBindings,
+          this.database.resources,
+          this.database.resourceFolders,
+          this.database.resourceAssets,
         ],
         async () => {
           await this.database.projects.delete(id)
@@ -343,6 +400,9 @@ export class ProjectRepository {
           await this.database.textureAssets.where('projectId').equals(id).delete()
           await this.database.materials.where('projectId').equals(id).delete()
           await this.database.textureBindings.where('projectId').equals(id).delete()
+          await this.database.resources.where('projectId').equals(id).delete()
+          await this.database.resourceFolders.where('projectId').equals(id).delete()
+          await this.database.resourceAssets.where('projectId').equals(id).delete()
         },
       )
     } catch (error) {

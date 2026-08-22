@@ -39,7 +39,7 @@ onBeforeUnmount(release)
   border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
   border-radius: 50%;
   background: #eef1ee;
-  color: #2c342f;
+  color: #25272d;
 }
 .material-swatch img {
   width: 100%;

@@ -4,9 +4,11 @@ import { createStudioCube, createStudioGroup } from '@/core/model/modelFactory'
 import { ModelRepository } from '@/core/model/modelRepository'
 import { DEFAULT_BEDROCK_VERSION } from '@/core/project/bedrockVersions'
 import { ProjectRepository } from '@/core/project/projectRepository'
+import { ResourceRepository } from '@/core/resources/resourceRepository'
 import { AddonsStudioDatabase } from '@/core/storage/database'
 import { TextureRepository } from '@/core/texture/textureRepository'
 import type { CreateProjectInput } from '@/types/project'
+import type { BlockResourcePayload, ModelResourcePayload } from '@/types/resource'
 
 const inspectTestImage = async (file: File) => ({
   mimeType: file.type === 'image/jpeg' ? 'image/jpeg' as const : 'image/png' as const,
@@ -164,5 +166,81 @@ describe('ProjectRepository', () => {
     expect(updated.createdAt).toBe(source.createdAt)
     expect(updated.name).toBe('Urbanismo 2')
     expect(updated.revision).toBe(2)
+  })
+
+  it('remaps Rework block links when duplicating a project', async () => {
+    const source = await repository.createProject(input())
+    const resources = new ResourceRepository(database)
+    const textures = new TextureRepository(database, inspectTestImage)
+    const material = await textures.createMaterial({ projectId: source.id, name: 'Rework Yellow' })
+    const asset = await resources.addAsset({
+      projectId: source.id,
+      kind: 'model',
+      file: new File(['{"format_version":"1.21.0"}'], 'desk.geo.json', { type: 'application/json' }),
+    })
+    const model = await resources.create<ModelResourcePayload>({
+      projectId: source.id,
+      type: 'model',
+      name: 'Desk',
+      identifier: 'geometry.rio_grande.desk',
+      payload: { format: 'bedrock_geometry', assetId: asset.id, originalFilename: 'desk.geo.json' },
+    })
+    await resources.attachAsset(asset.id, model.id)
+    const payload: BlockResourcePayload = {
+      displayName: 'Desk Block',
+      nameColor: '#ffffff',
+      translations: [{ locale: 'en', name: 'Desk Block' }],
+      textures: { mode: 'all', all: material.id },
+      light: { enabled: false, level: 0, vibrantColorEnabled: false, color: '#ffffff' },
+      transparency: 'opaque',
+      blocksLight: true,
+      destroyTime: 1,
+      explosionResistance: 1,
+      recommendedTool: 'axe',
+      requiredToolLevel: 'none',
+      dropIdentifier: '',
+      silkTouch: false,
+      fortune: false,
+      sound: 'wood',
+      collision: 'full',
+      selectionBox: 'full',
+      flammable: true,
+      friction: 0.6,
+      movementSpeed: 1,
+      mapColor: '#f5c518',
+      orientation: 'none',
+      creativeCategory: 'construction',
+      maxStackSize: 64,
+      recipe: { enabled: false },
+      pluginIds: [],
+      customModel: {
+        resourceId: model.id,
+        scale: { x: 1, y: 1, z: 1 },
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        collision: 'automatic',
+        renderMethod: 'opaque',
+        animationsEnabled: false,
+      },
+    }
+    await resources.create({
+      projectId: source.id,
+      type: 'block_model',
+      name: 'Desk Block',
+      identifier: 'rio_grande_urbanismo:desk',
+      payload,
+    })
+
+    const duplicate = await repository.duplicateProject(source.id)
+    const [copiedModel] = await resources.list<ModelResourcePayload>(duplicate.id, 'model')
+    const [copiedBlock] = await resources.list<BlockResourcePayload>(duplicate.id, 'block_model')
+    const [copiedMaterial] = await textures.listMaterials(duplicate.id)
+    const copiedAsset = copiedModel ? await resources.getAsset(copiedModel.payload.assetId) : undefined
+
+    expect(copiedModel?.id).not.toBe(model.id)
+    expect(copiedAsset?.resourceId).toBe(copiedModel?.id)
+    expect(copiedBlock?.payload.customModel?.resourceId).toBe(copiedModel?.id)
+    expect(copiedBlock?.payload.textures.all).toBe(copiedMaterial?.id)
+    expect(copiedBlock?.payload.textures.all).not.toBe(material.id)
   })
 })

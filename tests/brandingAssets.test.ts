@@ -22,14 +22,14 @@ describe('release metadata and branding assets', () => {
       version: string
     }
 
-    expect(packageJson.version).toBe('0.0.4-alpha.3')
-    expect(APP_VERSION).toBe('0.0.4.3')
-    expect(APP_RELEASE_LABEL).toBe('Alpha 0.0.4.3')
-    expect(APP_RELEASE_NAME).toBe('Texture Core Stability Update')
+    expect(packageJson.version).toBe('0.1.0-alpha.0')
+    expect(APP_VERSION).toBe('0.1.0')
+    expect(APP_RELEASE_LABEL).toBe('Alpha 0.1.0')
+    expect(APP_RELEASE_NAME).toBe('Rework Update')
     expect(CURRENT_RELEASE_NOTE).toMatchObject({
-      version: '0.0.4.3',
-      title: 'Texture Core Stabilized',
-      subtitle: 'Stability, Mobile Polish & Bug Fixes',
+      version: '0.1.0',
+      title: 'Addons Studio, rebuilt around addons',
+      subtitle: 'Rework Update',
     })
   })
 
@@ -53,5 +53,16 @@ describe('release metadata and branding assets', () => {
     ]) {
       expect(readFileSync(resolve(root, path), 'utf8')).toContain('<svg')
     }
+  })
+
+  it('uses the Rework yellow identity and no longer ships Three.js as a runtime dependency', () => {
+    const tokens = readFileSync(resolve(root, 'src/styles/tokens.css'), 'utf8')
+    const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
+      dependencies: Record<string, string>
+    }
+
+    expect(tokens).toContain('--color-brand-primary: #f5c518')
+    expect(tokens.toLowerCase()).not.toContain('#42d47a')
+    expect(packageJson.dependencies.three).toBeUndefined()
   })
 })

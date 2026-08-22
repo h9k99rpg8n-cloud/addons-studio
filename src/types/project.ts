@@ -22,6 +22,8 @@ export interface StudioProject {
   updatedAt: number
   schemaVersion: number
   revision: number
+  /** Rework Home preference. Missing means not pinned for older projects. */
+  pinned?: boolean
   /** Undefined means that the project is displayed at the root level. */
   folderId?: string
 }
@@ -48,6 +50,7 @@ export type ProjectUpdate = Partial<
     | 'targetVersion'
     | 'experimentalFeatures'
     | 'folderId'
+    | 'pinned'
   >
 >
 

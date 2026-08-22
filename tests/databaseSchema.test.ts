@@ -12,8 +12,8 @@ describe('database schema', () => {
     await database.delete()
   })
 
-  it('exposes the versioned project, model, editor asset, and Texture Core stores', () => {
-    expect(DATABASE_SCHEMA_VERSION).toBe(4)
+  it('exposes legacy compatibility stores plus the Rework resource library', () => {
+    expect(DATABASE_SCHEMA_VERSION).toBe(5)
     expect(database.tables.map((table) => table.name).sort()).toEqual([
       'materials',
       'modelEditorAssets',
@@ -21,6 +21,9 @@ describe('database schema', () => {
       'models',
       'projectFolders',
       'projects',
+      'resourceAssets',
+      'resourceFolders',
+      'resources',
       'settings',
       'snapshots',
       'textureAssets',
@@ -42,6 +45,12 @@ describe('database schema', () => {
     )
     expect(database.textureBindings.schema.indexes.map((index) => index.name)).toContain(
       '[modelId+cubeId]',
+    )
+    expect(database.resources.schema.indexes.map((index) => index.name)).toContain(
+      '[projectId+type]',
+    )
+    expect(database.resourceAssets.schema.indexes.map((index) => index.name)).toContain(
+      '[projectId+updatedAt]',
     )
   })
 
@@ -77,6 +86,8 @@ describe('database schema', () => {
     expect(upgraded.tables.map((table) => table.name)).toContain('materials')
     expect(upgraded.tables.map((table) => table.name)).toContain('textureAssets')
     expect(upgraded.tables.map((table) => table.name)).toContain('textureBindings')
+    expect(upgraded.tables.map((table) => table.name)).toContain('resources')
+    expect(upgraded.tables.map((table) => table.name)).toContain('resourceAssets')
     upgraded.close()
     await upgraded.delete()
   })

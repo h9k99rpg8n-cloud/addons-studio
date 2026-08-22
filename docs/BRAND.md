@@ -1,75 +1,66 @@
-# Addons Studio Brand System
+# Addons Studio Rework Brand System
 
-This document defines the visual identity introduced in Alpha `0.0.2`. The system is intentionally compact: it should make a small mobile interface recognizable without making the product heavy.
+The Rework identity positions Addons Studio as a professional Bedrock creation workspace rather than a generic dashboard or game-themed toy.
 
-## Chosen direction: Creative Core Cube
+## Logo
 
-The final mark is an original geometric cube containing a smaller gold cube.
+The original mark combines three ideas in one heavy, small-size silhouette:
 
-- The outer cube represents construction, modular add-on resources, and a shared workspace.
-- The inner gold core represents the user’s idea being shaped by studio tools.
-- Green keeps continuity with the foundation release while becoming a deliberate family rather than a single accent.
-- Gold gives creation actions and Material concepts a warm secondary signal.
+- a simplified isometric construction block;
+- crossed black creation tools;
+- a yellow rounded application tile.
 
-The mark is block-inspired but does not copy a Minecraft block, texture, typeface, grass motif, creeper face, or official brand asset.
+The block suggests modular Bedrock content without copying an official Minecraft texture, grass block, logo, or typeface. The crossed tools communicate building and configuration. Thick geometry keeps the mark legible as an iPhone home-screen icon and favicon.
 
-## Concepts explored
-
-Three directions were compared before implementation:
-
-1. **Open Cube + Spark** — an outlined cube with a separate sparkle. Clear at large sizes, but the sparkle became generic and visually fragile as a favicon.
-2. **Edited Cube** — a cube with a cut corner resembling a selection or modeling operation. It communicated editing, but the silhouette read as incomplete at home-screen size.
-3. **Creative Core Cube** — a solid modular cube with a contrasting inner core. It retained the strongest small-size silhouette, connected naturally to the product architecture, and supplied both a logo mark and an app icon. This direction was selected.
+The primary wordmark uses the product's geometric, heavy system-sans typography. Technical identifiers continue to use the monospace stack.
 
 ## Palette
 
 | Role | Dark UI | Light UI | Purpose |
 | --- | --- | --- | --- |
-| Primary | `#42D47A` | `#269653` | Brand, creation, active states |
-| Primary deep | `#168B4B` | `#116638` | Cube depth and strong brand detail |
-| Secondary | `#F0B94D` | `#D9951C` | Creative core, Material, selective emphasis |
-| Canvas | `#0B1016` | `#F3F7F4` | Application background |
-| Surface | `#121A23` | `#FFFFFF` | Cards, dialogs, sheets |
-| Text | `#F1F6F3` | `#15221B` | Primary content |
+| Brand yellow | `#F5C518` | `#DFAE00` | Primary actions, active navigation, progress, key icons |
+| Yellow highlight | `#FFDC55` | `#8D6E00` | Accessible accent text and focus details |
+| Graphite canvas | `#0C0D10` | `#F3F3F1` | Application background |
+| Surface | `#15171C` | `#FFFFFF` | Cards, dialogs, sheets, forms |
+| Raised surface | `#1C1F25` | `#F7F7F5` | Nested controls and contextual actions |
+| Primary text | `#F7F7F5` | `#17181B` | Main content |
 
-Semantic success, info, warning, and danger colors are separate tokens. Resource modules also have named brand, gold, sky, violet, rose, cyan, and orange tones. A tone supports recognition but never replaces a text label or unique silhouette.
+Yellow is an accent, not a page fill. It marks the action or state that matters while graphite and neutral surfaces carry the interface. Success, warning, error, and info remain separate semantic colors and never depend on color alone.
 
-## Typography and shape
+## Shape, spacing, and motion
 
-Addons Studio uses the device’s rounded system sans stack for a native, lightweight result and a system monospace stack for namespaces and technical identifiers. Headings are compact with negative letter spacing; supporting copy keeps a relaxed line height.
-
-Cards use the documented radius and shadow scales. Interactive controls maintain at least 44 × 44 CSS pixels. Motion is brief and uses the shared easing token, and all motion collapses under `prefers-reduced-motion`.
+- Important controls keep a minimum 44 × 44 CSS-pixel target.
+- Cards use a compact radius scale and restrained elevation.
+- Inputs use at least 16 CSS pixels on iPhone to avoid Safari focus zoom.
+- Bottom navigation includes `safe-area-inset-bottom`; headers and content include every relevant safe-area inset.
+- Motion is brief and collapses under `prefers-reduced-motion`.
+- Hover is enhancement only; every workflow remains available to touch and keyboard users.
 
 ## Icon architecture
 
-The icon system has two explicit layers:
+`AppIcon.vue` uses Lucide for generic actions such as back, add, import, delete, search, menu, and settings. Product-specific concepts remain represented by original Addons Studio SVG definitions where appropriate.
 
-- `AppIcon.vue` wraps Lucide for generic actions: back, close, settings, search, add, delete, rename, duplicate, import, information, and warnings.
-- `StudioIcon.vue` renders original Addons Studio concepts from `src/core/icons/studioIcons.ts`.
-
-Studio icons use a 24 × 24 grid, 1.7px rounded strokes, common optical padding, one base color, and an optional secondary accent. The typed registry includes Project, Block, Item, Entity, Model, Material, Animation, Particle, Audio, Script, Function, Language, Recipe, Collision Box, Visual Logic, Add Resource, and Workspace marks.
-
-Material intentionally uses a sphere/material-ball silhouette with a highlight and lower shading region. It must not be replaced by a generic image-file icon.
+The Material identity is an image/resource concept in the Rework product. It is never presented as a fake paint editor. Model, Block, Block Model, Assets, Code, World, and Project use consistent optical sizing and the shared yellow/neutral color system.
 
 ## Assets
 
-Editable sources live in `src/assets/brand/`:
+Editable sources:
 
-- `addons-studio-mark.svg` — transparent logo mark.
-- `addons-studio-app-icon.svg` — rounded application icon source.
-- `addons-studio-maskable.svg` — full-bleed safe-zone source for adaptive masks.
+- `src/assets/brand/addons-studio-mark.svg`
+- `src/assets/brand/addons-studio-app-icon.svg`
+- `src/assets/brand/addons-studio-maskable.svg`
 
-Deployment assets live in `public/` and are referenced with Vite base-aware paths:
+PWA/browser outputs:
 
-- `icon.svg`
-- `safari-pinned-tab.svg`
-- `apple-touch-icon.png`
-- `pwa-192x192.png`
-- `pwa-512x512.png`
-- `pwa-maskable-512x512.png`
+- `public/icon.svg`
+- `public/safari-pinned-tab.svg`
+- `public/apple-touch-icon.png`
+- `public/pwa-192x192.png`
+- `public/pwa-512x512.png`
+- `public/pwa-maskable-512x512.png`
 
-Do not stretch, rotate, add Minecraft textures to, recolor one face arbitrarily, or remove the gold core from the primary mark. Monochrome usage is reserved for platform contexts such as Safari pinned tabs.
+Do not add Minecraft textures, creeper faces, official wordmarks, or third-party tool artwork to the logo. Do not replace the black-on-yellow silhouette with the retired green identity.
 
 ## Licensing
 
-The Creative Core Cube and the Studio icon family were created for Addons Studio and are distributed with the project under the MIT License. No GPL application source or proprietary Minecraft artwork is included.
+The Rework mark and application assets are original Addons Studio work distributed under the MIT License. No GPL application source or proprietary Minecraft artwork is included.

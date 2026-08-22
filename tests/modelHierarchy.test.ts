@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { Euler, MathUtils, Vector3 } from 'three'
 
 import {
   applyHierarchyState,
@@ -230,20 +229,14 @@ describe('Model Studio hierarchy and transforms', () => {
     expect(parentMove.elements[0]?.position.z).toBeCloseTo(-2)
   })
 
-  it('matches Three.js XYZ Euler axes for combined object rotations', () => {
+  it('keeps the legacy XYZ Euler axis result stable for combined object rotations', () => {
     const cube = createStudioCube()
     cube.rotation = { x: 27, y: -38, z: 61 }
     const actual = axisVectorForSpace(cube, { x: 0, y: 0, z: 0 }, 'local', 'x')
-    const expected = new Vector3(1, 0, 0).applyEuler(new Euler(
-      MathUtils.degToRad(cube.rotation.x),
-      MathUtils.degToRad(cube.rotation.y),
-      MathUtils.degToRad(cube.rotation.z),
-      'XYZ',
-    ))
 
-    expect(actual.x).toBeCloseTo(expected.x)
-    expect(actual.y).toBeCloseTo(expected.y)
-    expect(actual.z).toBeCloseTo(expected.z)
+    expect(actual.x).toBeCloseTo(0.3820351942)
+    expect(actual.y).toBeCloseTo(0.6437854137)
+    expect(actual.z).toBeCloseTo(0.6630154233)
   })
 
   it('rotates grouped children around the selected group transform-space axis', () => {

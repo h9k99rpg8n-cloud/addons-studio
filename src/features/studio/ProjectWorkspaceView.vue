@@ -1,464 +1,65 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import AppBadge from '@/components/common/AppBadge.vue'
-import AppButton from '@/components/common/AppButton.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
-import IconButton from '@/components/common/IconButton.vue'
-import StudioIcon from '@/components/common/StudioIcon.vue'
-import AddResourceSheet from '@/components/project/AddResourceSheet.vue'
+import StudioPageHeader from '@/components/common/StudioPageHeader.vue'
+import ToolCard from '@/components/common/ToolCard.vue'
 import ProjectActionsController from '@/components/project/ProjectActionsController.vue'
 import ProjectIcon from '@/components/project/ProjectIcon.vue'
-import ResourceCategoryCard from '@/components/project/ResourceCategoryCard.vue'
-import { toAppError } from '@/core/errors/AppError'
-import { modelRepository } from '@/core/model/modelRepository'
+import { useProjectContext } from '@/composables/useProjectContext'
+import { resourceRepository } from '@/core/resources/resourceRepository'
 import { textureRepository } from '@/core/texture/textureRepository'
-import { RESOURCE_CATEGORIES } from '@/features/studio/resourceCategories'
-import { useProjectStore } from '@/stores/projects'
 import { useLocaleStore } from '@/stores/locale'
-import { useToastStore } from '@/stores/toasts'
-import type { ProjectType, ResourceTemplate } from '@/types/project'
+import type { StudioResourceType } from '@/types/resource'
+import { formatRelativeDate } from '@/utils/format'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
-const projects = useProjectStore()
-const toasts = useToastStore()
 const locale = useLocaleStore()
-const loading = ref(true)
-const loadError = ref('')
-const addOpen = ref(false)
-const projectMenuOpen = ref(false)
-const modelCount = ref(0)
-const materialCount = ref(0)
-
-const project = computed(() =>
-  projects.activeProject?.id === props.id
-    ? projects.activeProject
-    : projects.projects.find((entry) => entry.id === props.id),
-)
-
-const projectTypeLabels: Record<ProjectType, string> = {
-  addon: 'Add-on',
-  resource_pack: 'Resource Pack',
-  behavior_pack: 'Behavior Pack',
-}
+const { project, loading, error } = useProjectContext(() => props.id)
+const menuOpen = ref(false)
+const counts = ref<Record<string, number>>({})
 
 onMounted(async () => {
-  try {
-    await projects.loadProjects()
-    await projects.openProject(props.id)
-    modelCount.value = await modelRepository.countModels(props.id)
-    materialCount.value = await textureRepository.countMaterials(props.id)
-  } catch (error) {
-    loadError.value = toAppError(error, locale.t('Addons Studio could not open this project.')).userMessage
-  } finally {
-    loading.value = false
-  }
+  const types: StudioResourceType[] = ['model', 'block', 'block_model']
+  const values = await Promise.all(types.map((type) => resourceRepository.count(props.id, type)))
+  counts.value = Object.fromEntries(types.map((type, index) => [type, values[index] ?? 0]))
+  counts.value.material = await textureRepository.countMaterials(props.id)
 })
-
-function openCategory(id: string, label: string): void {
-  if (id === 'models') {
-    void router.push({ name: 'models', params: { projectId: props.id } })
-    return
-  }
-  if (id === 'materials') {
-    void router.push({ name: 'materials', params: { projectId: props.id } })
-    return
-  }
-  if (id === 'textures') {
-    void router.push({ name: 'texture-models', params: { projectId: props.id } })
-    return
-  }
-  toasts.push({
-    type: 'info',
-    message: locale.t('{name} tools are coming in a future Addons Studio update.', { name: locale.t(label) }),
-  })
-}
-
-function selectTemplate(template: ResourceTemplate): void {
-  addOpen.value = false
-  if (template.id === 'model' && template.status === 'available') {
-    void router.push({ name: 'models', params: { projectId: props.id } })
-    return
-  }
-  if (template.category === 'materials' && template.status === 'available') {
-    void router.push({ name: 'materials', params: { projectId: props.id } })
-    return
-  }
-  if (template.category === 'textures' && template.status === 'available') {
-    void router.push({ name: 'texture-models', params: { projectId: props.id } })
-    return
-  }
-  toasts.push({ type: 'info', message: template.description })
-}
-
-function categoryCount(id: string): number {
-  if (id === 'models') return modelCount.value
-  if (id === 'materials') return materialCount.value
-  return 0
-}
-
-function afterDelete(): void {
-  void router.replace({ name: 'projects' })
-}
 </script>
 
 <template>
-  <main class="workspace-view">
-    <header class="workspace-topbar">
-      <IconButton
-        icon="arrow-left"
-        :label="locale.t('Back to projects')"
-        @click="router.push({ name: 'projects' })"
-      />
-      <div>
-        <strong>{{ project?.name ?? locale.t('Project Workspace title') }}</strong>
-        <small v-if="project">{{ project.namespace }}</small>
-      </div>
-      <IconButton
-        icon="more-vertical"
-        :label="locale.t('Project menu')"
-        :disabled="!project"
-        @click="projectMenuOpen = true"
-      />
-    </header>
+  <main>
+    <StudioPageHeader :title="locale.t('Project')" :subtitle="project?.name" :eyebrow="locale.t('Project control center')" icon="folder">
+      <template #actions><button class="header-action" type="button" :disabled="!project" :aria-label="locale.t('Project menu')" @click="menuOpen=true"><AppIcon name="more-vertical" :size="21" /></button></template>
+    </StudioPageHeader>
+    <div class="project-body">
+      <section v-if="loading" class="state">{{ locale.t('Opening project') }}</section>
+      <section v-else-if="error || !project" class="state state--error">{{ error }}</section>
+      <template v-else>
+        <section class="project-hero">
+          <ProjectIcon :icon="project.icon" size="large" />
+          <div><div class="badges"><AppBadge tone="accent">{{ locale.t(project.projectType.replace('_',' ')) }}</AppBadge><AppBadge>{{ project.targetVersion }}</AppBadge><AppBadge v-if="project.experimentalFeatures" tone="warning">{{ locale.t('Experimental') }}</AppBadge></div><h1>{{ project.name }}</h1><code>{{ project.namespace }}</code><p>{{ project.description || locale.t('No project description yet.') }}</p></div>
+        </section>
 
-    <section v-if="loading" class="workspace-loading" :aria-label="locale.t('Opening project')">
-      <div class="skeleton workspace-loading__hero" />
-      <div class="workspace-loading__grid">
-        <div v-for="index in 8" :key="index" class="skeleton" />
-      </div>
-    </section>
+        <section class="project-stats">
+          <div><span>{{ counts.block ?? 0 }}</span><small>{{ locale.t('Blocks') }}</small></div>
+          <div><span>{{ counts.block_model ?? 0 }}</span><small>{{ locale.t('Block Models') }}</small></div>
+          <div><span>{{ counts.model ?? 0 }}</span><small>{{ locale.t('Models') }}</small></div>
+          <div><span>{{ counts.material ?? 0 }}</span><small>{{ locale.t('Materials') }}</small></div>
+        </section>
 
-    <section v-else-if="loadError || !project" class="workspace-error">
-      <span><AppIcon name="alert-triangle" :size="30" /></span>
-      <h1>{{ locale.t('Project unavailable') }}</h1>
-      <p>{{ loadError || locale.t('This local project could not be found.') }}</p>
-      <AppButton @click="router.replace({ name: 'projects' })">{{ locale.t('Back to Projects') }}</AppButton>
-    </section>
+        <section class="project-section"><header><p>{{ locale.t('Workspace') }}</p><h2>{{ locale.t('Continue building') }}</h2></header><div class="tool-grid"><ToolCard :title="locale.t('Create')" :description="locale.t('Models, standard blocks, and custom block models')" icon="plus-circle" @open="router.push({name:'create-hub',params:{projectId:id}})" /><ToolCard :title="locale.t('Assets')" :description="locale.t('Reusable project materials and future specialized assets')" icon="shapes" @open="router.push({name:'assets-hub',params:{projectId:id}})" /><ToolCard :title="locale.t('Code')" :description="locale.t('Reusable Plugins, Functions, and Recipes when enabled')" icon="code-xml" @open="router.push({name:'code-hub',params:{projectId:id}})" /><ToolCard :title="locale.t('World')" :description="locale.t('Advanced world-generation tools when ready')" icon="globe" @open="router.push({name:'world-hub',params:{projectId:id}})" /></div></section>
 
-    <div v-else class="workspace-content">
-      <section class="project-overview">
-        <ProjectIcon :icon="project.icon" size="large" />
-        <div>
-          <div class="project-overview__badges">
-            <AppBadge tone="accent">{{ locale.t(projectTypeLabels[project.projectType]) }}</AppBadge>
-            <AppBadge>{{ project.targetVersion }}</AppBadge>
-            <AppBadge>{{ locale.t('Alpha workspace') }}</AppBadge>
-            <AppBadge v-if="project.experimentalFeatures" tone="warning">{{ locale.t('Experimental') }}</AppBadge>
-          </div>
-          <h1>{{ project.name }}</h1>
-          <p>{{ project.description || locale.t('A clean Bedrock project ready for future resources.') }}</p>
-        </div>
-      </section>
-
-      <section class="resources-section" aria-labelledby="resources-heading">
-        <header>
-          <div>
-            <p class="eyebrow">{{ locale.t('Project Workspace') }}</p>
-            <h2 id="resources-heading">{{ locale.t('Resources') }}</h2>
-          </div>
-          <span>{{ locale.t('{count} total', { count: modelCount + materialCount }) }}</span>
-        </header>
-        <div class="resource-grid">
-          <ResourceCategoryCard
-            v-for="category in RESOURCE_CATEGORIES"
-            :key="category.id"
-            :category="category"
-            :count="categoryCount(category.id)"
-            @open="openCategory(category.id, category.label)"
-          />
-        </div>
-      </section>
-
-      <aside class="foundation-note">
-        <StudioIcon name="workspace" :size="23" />
-        <div>
-          <strong>{{ locale.t('Model Core + Texture Core are available') }}</strong>
-          <p>
-            {{ locale.t('Create geometry in Model Studio, organize reusable project materials in Materials, then open Texture Core for model-specific UV bindings and texturing.') }}
-          </p>
-        </div>
-      </aside>
+        <section class="project-details"><header><p>{{ locale.t('Project information') }}</p><h2>{{ locale.t('Local workspace') }}</h2></header><dl><div><dt>{{ locale.t('Type') }}</dt><dd>{{ locale.t(project.projectType.replace('_',' ')) }}</dd></div><div><dt>{{ locale.t('Target Bedrock') }}</dt><dd>{{ project.targetVersion }}</dd></div><div><dt>{{ locale.t('Last edited') }}</dt><dd>{{ formatRelativeDate(project.updatedAt,Date.now(),locale.language) }}</dd></div><div><dt>{{ locale.t('Storage') }}</dt><dd>{{ locale.t('This device') }}</dd></div></dl><p><AppIcon name="database" :size="18" />{{ locale.t('Previous editor data remains preserved locally for compatibility. Retired editors are not loaded.') }}</p></section>
+      </template>
     </div>
-
-    <footer v-if="project" class="workspace-add">
-      <AppButton size="large" block @click="addOpen = true">
-        <template #icon><StudioIcon name="add-resource" :size="23" /></template>
-        {{ locale.t('Add Resource') }}
-      </AppButton>
-    </footer>
-
-    <AddResourceSheet
-      v-if="project"
-      :open="addOpen"
-      :target-version="project.targetVersion"
-      @close="addOpen = false"
-      @select="selectTemplate"
-    />
-    <ProjectActionsController
-      :project="project"
-      :open="projectMenuOpen"
-      @close="projectMenuOpen = false"
-      @deleted="afterDelete"
-    />
+    <ProjectActionsController :project="project" :open="menuOpen" @close="menuOpen=false" @deleted="router.replace({name:'projects'})" />
   </main>
 </template>
 
 <style scoped>
-.workspace-view {
-  min-height: 100dvh;
-  padding-bottom: calc(5.7rem + env(safe-area-inset-bottom));
-}
-
-.workspace-topbar {
-  position: sticky;
-  z-index: var(--z-header);
-  top: 0;
-  min-height: calc(var(--header-height) + env(safe-area-inset-top));
-  display: grid;
-  grid-template-columns: var(--touch-target) minmax(0, 1fr) var(--touch-target);
-  align-items: center;
-  gap: 0.55rem;
-  padding: env(safe-area-inset-top) max(var(--page-gutter), env(safe-area-inset-right)) 0
-    max(var(--page-gutter), env(safe-area-inset-left));
-  border-bottom: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-app-bg) 92%, transparent);
-  backdrop-filter: blur(16px);
-}
-
-.workspace-topbar > div {
-  min-width: 0;
-  display: grid;
-  text-align: center;
-}
-
-.workspace-topbar strong,
-.workspace-topbar small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-topbar strong {
-  font-size: 0.9rem;
-}
-
-.workspace-topbar small {
-  margin-top: 0.12rem;
-  color: var(--color-text-subtle);
-  font-family: var(--font-mono);
-  font-size: 0.63rem;
-}
-
-.workspace-content,
-.workspace-loading {
-  width: min(100%, var(--content-max));
-  margin: 0 auto;
-  padding: 1rem max(var(--page-gutter), env(safe-area-inset-right)) 2rem
-    max(var(--page-gutter), env(safe-area-inset-left));
-}
-
-.project-overview {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  overflow: hidden;
-  padding: var(--card-padding);
-  background:
-    radial-gradient(circle at 100% 0, var(--color-brand-glow), transparent 38%),
-    var(--color-surface);
-  box-shadow: var(--shadow-card);
-}
-
-.project-overview::after {
-  position: absolute;
-  right: -2.75rem;
-  bottom: -3.75rem;
-  width: 8rem;
-  height: 8rem;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 14%, transparent);
-  border-radius: 50%;
-  content: '';
-  pointer-events: none;
-}
-
-.project-overview > * {
-  position: relative;
-  z-index: 1;
-}
-
-.project-overview__badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.project-overview h1 {
-  overflow: hidden;
-  margin: 0.55rem 0 0;
-  font-size: clamp(1.25rem, 6vw, 1.75rem);
-  letter-spacing: -0.025em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-overview p {
-  display: -webkit-box;
-  overflow: hidden;
-  margin: 0.3rem 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.74rem;
-  line-height: 1.45;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.resources-section {
-  margin-top: 1.65rem;
-}
-
-.resources-section > header {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-
-.resources-section h2 {
-  margin: 0.18rem 0 0;
-  font-size: 1.18rem;
-}
-
-.resources-section > header > span {
-  color: var(--color-text-subtle);
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
-.resource-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-
-.foundation-note {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--card-padding);
-  background: var(--color-surface-muted);
-  color: var(--color-text-muted);
-}
-
-.foundation-note > :first-child {
-  color: var(--color-accent-strong);
-  --studio-icon-accent: var(--color-brand-secondary);
-}
-
-.foundation-note strong {
-  color: var(--color-text);
-  font-size: 0.8rem;
-}
-
-.foundation-note p {
-  margin: 0.25rem 0 0;
-  font-size: 0.7rem;
-  line-height: 1.5;
-}
-
-.workspace-add {
-  position: fixed;
-  z-index: var(--z-navigation);
-  inset: auto 0 0;
-  padding: var(--space-3) max(var(--page-gutter), env(safe-area-inset-right))
-    calc(var(--space-3) + env(safe-area-inset-bottom)) max(var(--page-gutter), env(safe-area-inset-left));
-  border-top: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-app-bg) 94%, transparent);
-  backdrop-filter: blur(18px);
-}
-
-.workspace-add > * {
-  max-width: var(--content-max);
-  margin: 0 auto;
-}
-
-.workspace-loading__hero {
-  height: 7.5rem;
-  border-radius: var(--radius-xl);
-}
-
-.workspace-loading__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.65rem;
-  margin-top: 1.5rem;
-}
-
-.workspace-loading__grid > div {
-  height: 8.5rem;
-  border-radius: var(--radius-xl);
-}
-
-.workspace-error {
-  min-height: calc(100dvh - 5rem);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem var(--page-gutter);
-  text-align: center;
-}
-
-.workspace-error > span {
-  width: 4rem;
-  height: 4rem;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-xl);
-  background: var(--color-warning-soft);
-  color: var(--color-warning-text);
-}
-
-.workspace-error h1 {
-  margin: 1rem 0 0;
-  font-size: 1.25rem;
-}
-
-.workspace-error p {
-  max-width: 25rem;
-  margin: 0.45rem 0 1.2rem;
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-}
-
-@media (min-width: 680px) {
-  .resource-grid,
-  .workspace-loading__grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (orientation: landscape) and (max-height: 540px) {
-  .workspace-topbar {
-    position: relative;
-  }
-
-  .workspace-add {
-    position: sticky;
-  }
-
-  .workspace-view {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-}
+.project-body{width:min(100%,var(--content-max));margin:0 auto;padding:1rem max(var(--page-gutter),env(safe-area-inset-right)) 2rem max(var(--page-gutter),env(safe-area-inset-left))}.header-action{width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface);color:var(--color-text)}.state{min-height:55dvh;display:grid;place-items:center;color:var(--color-text-subtle)}.state--error{color:var(--color-danger)}.project-hero{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:1rem;border:1px solid var(--color-border);border-radius:var(--radius-2xl);padding:1rem;background:var(--color-surface);box-shadow:var(--shadow-card)}.project-hero>div{min-width:0}.badges{display:flex;flex-wrap:wrap;gap:.35rem}.project-hero h1,.project-hero code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.project-hero h1{margin:.55rem 0 .1rem;font-size:clamp(1.25rem,5vw,1.8rem);letter-spacing:-.04em}.project-hero code{color:var(--color-accent);font-size:.63rem}.project-hero p{display:-webkit-box;overflow:hidden;margin:.35rem 0 0;color:var(--color-text-subtle);font-size:.68rem;line-height:1.45;-webkit-box-orient:vertical;-webkit-line-clamp:2}.project-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;margin-top:.7rem}.project-stats>div{min-width:0;display:grid;place-items:center;gap:.12rem;border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:.65rem .25rem;background:var(--color-surface-muted)}.project-stats span{font-family:var(--font-mono);font-size:.9rem;font-weight:850}.project-stats small{overflow:hidden;max-width:100%;color:var(--color-text-subtle);font-size:.52rem;text-overflow:ellipsis;white-space:nowrap}.project-section,.project-details{margin-top:1.4rem}.project-section>header p,.project-details>header p{margin:0;color:var(--color-accent);font-size:.59rem;font-weight:900;text-transform:uppercase;letter-spacing:.09em}.project-section h2,.project-details h2{margin:.15rem 0 .7rem;font-size:1.1rem}.tool-grid{display:grid;gap:.65rem}.project-details{border:1px solid var(--color-border);border-radius:var(--radius-xl);padding:1rem;background:var(--color-surface)}.project-details dl{display:grid;gap:.15rem;margin:0}.project-details dl>div{min-height:2.7rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;border-bottom:1px solid var(--color-border)}.project-details dt{color:var(--color-text-subtle);font-size:.68rem}.project-details dd{margin:0;font-size:.68rem;font-weight:750}.project-details>p{display:flex;gap:.55rem;margin:.8rem 0 0;color:var(--color-text-subtle);font-size:.63rem;line-height:1.45}@media(min-width:720px){.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.project-stats small{font-size:.62rem}}
 </style>
