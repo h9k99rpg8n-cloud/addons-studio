@@ -21,6 +21,8 @@ export interface StudioMaterial {
   name: string
   identifier: string
   textureAssetId?: string
+  /** Rework metadata. Materials remain project-scoped and folders never affect consumers. */
+  folderId?: string
   createdAt: number
   updatedAt: number
   revision: number

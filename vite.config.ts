@@ -29,13 +29,13 @@ export default defineConfig(() => {
           id: base,
           name: 'Addons Studio',
           short_name: 'Addons Studio',
-          description: 'Create Minecraft Bedrock projects directly from your mobile browser.',
+          description: 'Organize, create, and automate Minecraft Bedrock add-ons from any device.',
           start_url: base,
           scope: base,
           display: 'standalone',
           orientation: 'any',
-          background_color: '#0b1016',
-          theme_color: '#0b1016',
+          background_color: '#0c0d10',
+          theme_color: '#0c0d10',
           categories: ['developer', 'productivity', 'utilities'],
           icons: [
             {
@@ -64,15 +64,7 @@ export default defineConfig(() => {
           clientsClaim: true,
           skipWaiting: true,
           navigateFallback: 'index.html',
-          globPatterns: ['**/*.{js,css,html}'],
-          // Keep the offline shell light. The 3D editor is fetched only when
-          // Model Studio is opened instead of taxing every mobile install.
-          globIgnores: [
-            '**/three.module-*.js',
-            '**/OrbitControls-*.js',
-            '**/ModelStudioView-*.js',
-            '**/ModelStudioView-*.css',
-          ],
+          globPatterns: ['**/*.{js,css,html,svg,png}'],
         },
       }),
     ],
@@ -84,8 +76,7 @@ export default defineConfig(() => {
     build: {
       target: 'es2022',
       cssCodeSplit: true,
-      // Three.js is an intentional, isolated route chunk rather than startup code.
-      chunkSizeWarningLimit: 750,
+      chunkSizeWarningLimit: 600,
     },
     test: {
       environment: 'happy-dom',

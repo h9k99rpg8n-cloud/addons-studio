@@ -14,13 +14,17 @@ import { validateStoredModel } from '@/core/model/modelValidation'
 import { importModelJson } from '@/core/model/portability/modelJsonImporter'
 import { serializeStudioModelJson } from '@/core/model/portability/modelJsonExporter'
 import { DEFAULT_PROJECT_ICON, PROJECT_SCHEMA_VERSION } from '@/core/project/constants'
+import { remapResourcePayload } from '@/core/resources/resourceReferences'
 import { type AddonsStudioDatabase, studioDatabase } from '@/core/storage/database'
 import type { ModelEditorAsset, StudioEditorState, StudioModel, StudioReferenceImage } from '@/types/model'
 import type { ProjectSnapshot, StudioProject } from '@/types/project'
+import type { StudioResource, StudioResourceAsset, StudioResourceFolder } from '@/types/resource'
+import type { StudioMaterial, StudioTextureAsset, StudioTextureBinding } from '@/types/texture'
 import { createId } from '@/utils/createId'
 
 export const PROJECT_PACKAGE_FORMAT = 'addons-studio-project'
-export const PROJECT_PACKAGE_VERSION = 1
+export const PROJECT_PACKAGE_VERSION = 2
+const LEGACY_PROJECT_PACKAGE_VERSION = 1
 const MAX_COMPRESSED_PACKAGE_BYTES = 256 * 1024 * 1024
 const MAX_EXPANDED_PACKAGE_BYTES = 512 * 1024 * 1024
 
@@ -59,9 +63,45 @@ interface PackageProjectFolderRecord {
   schemaVersion: number
 }
 
+interface PackageBinaryAssetRecord {
+  id: string
+  name: string
+  mimeType: string
+  path: string
+}
+
+interface PackageResourceAssetRecord extends PackageBinaryAssetRecord {
+  resourceId?: string
+  kind: StudioResourceAsset['kind']
+  extension: string
+  byteLength: number
+  createdAt: number
+  updatedAt: number
+}
+
+interface PackageTextureAssetRecord extends PackageBinaryAssetRecord {
+  width: number
+  height: number
+  createdAt: number
+  updatedAt: number
+}
+
+interface PackageReworkData {
+  resourceFolders: StudioResourceFolder[]
+  resources: StudioResource[]
+  materials: StudioMaterial[]
+  textureBindings: StudioTextureBinding[]
+}
+
+interface PackageReworkRecord {
+  dataPath: string
+  resourceAssets: PackageResourceAssetRecord[]
+  textureAssets: PackageTextureAssetRecord[]
+}
+
 export interface ProjectPackageManifest {
   format: typeof PROJECT_PACKAGE_FORMAT
-  formatVersion: typeof PROJECT_PACKAGE_VERSION
+  formatVersion: typeof PROJECT_PACKAGE_VERSION | typeof LEGACY_PROJECT_PACKAGE_VERSION
   exportedAt: string
   project: Omit<StudioProject, 'folderId'>
   content: {
@@ -70,10 +110,17 @@ export interface ProjectPackageManifest {
     groups: number
     modelFolders: number
     editorAssets: number
+    resources?: number
+    resourceFolders?: number
+    resourceAssets?: number
+    materials?: number
+    textureAssets?: number
+    textureBindings?: number
   }
   projectFolder?: PackageProjectFolderRecord
   models: { id: string; modelPath: string; editorPath: string }[]
   assets: PackageAssetRecord[]
+  rework?: PackageReworkRecord
 }
 
 export interface InspectedProjectPackage {
@@ -161,7 +208,9 @@ function isManifest(value: unknown): value is ProjectPackageManifest {
   const manifest = value as Partial<ProjectPackageManifest>
   const project = manifest.project as Partial<StudioProject> | undefined
   const content = manifest.content as Partial<ProjectPackageManifest['content']> | undefined
-  if (manifest.format !== PROJECT_PACKAGE_FORMAT || manifest.formatVersion !== PROJECT_PACKAGE_VERSION) return false
+  if (manifest.format !== PROJECT_PACKAGE_FORMAT
+    || ![LEGACY_PROJECT_PACKAGE_VERSION, PROJECT_PACKAGE_VERSION].includes(manifest.formatVersion ?? 0)
+  ) return false
   if (!project
     || typeof project.id !== 'string'
     || typeof project.name !== 'string'
@@ -222,6 +271,33 @@ function isManifest(value: unknown): value is ProjectPackageManifest {
     assetPaths.add(asset.path)
   }
   if (content.models !== manifest.models.length || content.editorAssets !== manifest.assets.length) return false
+  if (manifest.formatVersion === PROJECT_PACKAGE_VERSION) {
+    const rework = manifest.rework
+    if (!rework
+      || !isPackagePath(rework.dataPath, 'rework/')
+      || !Array.isArray(rework.resourceAssets)
+      || !Array.isArray(rework.textureAssets)
+      || !isFiniteCount(content.resources)
+      || !isFiniteCount(content.resourceFolders)
+      || !isFiniteCount(content.resourceAssets)
+      || !isFiniteCount(content.materials)
+      || !isFiniteCount(content.textureAssets)
+      || !isFiniteCount(content.textureBindings)
+    ) return false
+    const paths = new Set<string>()
+    for (const asset of [...rework.resourceAssets, ...rework.textureAssets]) {
+      if (!asset || typeof asset.id !== 'string'
+        || typeof asset.name !== 'string'
+        || typeof asset.mimeType !== 'string'
+        || !isPackagePath(asset.path, 'rework/assets/')
+        || paths.has(asset.path)
+      ) return false
+      paths.add(asset.path)
+    }
+    if (content.resourceAssets !== rework.resourceAssets.length
+      || content.textureAssets !== rework.textureAssets.length
+    ) return false
+  }
   const folder = manifest.projectFolder
   if (folder && (
     typeof folder.id !== 'string'
@@ -231,6 +307,19 @@ function isManifest(value: unknown): value is ProjectPackageManifest {
     || !Number.isFinite(folder.schemaVersion)
   )) return false
   return true
+}
+
+function isReworkData(value: unknown): value is PackageReworkData {
+  if (!value || typeof value !== 'object') return false
+  const data = value as Partial<PackageReworkData>
+  return Array.isArray(data.resourceFolders)
+    && Array.isArray(data.resources)
+    && Array.isArray(data.materials)
+    && Array.isArray(data.textureBindings)
+    && data.resourceFolders.every((folder) => folder && typeof folder.id === 'string' && typeof folder.name === 'string')
+    && data.resources.every((resource) => resource && typeof resource.id === 'string' && typeof resource.name === 'string' && typeof resource.type === 'string')
+    && data.materials.every((material) => material && typeof material.id === 'string' && typeof material.name === 'string')
+    && data.textureBindings.every((binding) => binding && typeof binding.id === 'string' && typeof binding.materialId === 'string')
 }
 
 function remapModelIds(model: ReturnType<typeof importModelJson>['model'], folderSourceIds: string[]) {
@@ -254,6 +343,7 @@ function remapModelIds(model: ReturnType<typeof importModelJson>['model'], folde
     id: folderIds.get(folder.id)!,
     parentId: folder.parentId ? folderIds.get(folder.parentId) : undefined,
   }))
+  return { cubeIds, groupIds, folderIds }
 }
 
 export class ProjectPackageService {
@@ -266,11 +356,28 @@ export class ProjectPackageService {
     onStage?.('reading')
     const project = await this.database.projects.get(projectId)
     if (!project) throw new AppError('PROJECT_NOT_FOUND', 'This project is no longer available on this device.')
-    const [models, currentAssets, legacyAssets, projectFolder] = await Promise.all([
+    const [
+      models,
+      currentAssets,
+      legacyAssets,
+      projectFolder,
+      resources,
+      resourceFolders,
+      resourceAssets,
+      materials,
+      textureAssets,
+      textureBindings,
+    ] = await Promise.all([
       this.database.models.where('projectId').equals(projectId).toArray(),
       this.database.modelEditorAssets.where('projectId').equals(projectId).toArray(),
       this.database.modelReferenceAssets.where('projectId').equals(projectId).toArray(),
       project.folderId ? this.database.projectFolders.get(project.folderId) : undefined,
+      this.database.resources.where('projectId').equals(projectId).toArray(),
+      this.database.resourceFolders.where('projectId').equals(projectId).toArray(),
+      this.database.resourceAssets.where('projectId').equals(projectId).toArray(),
+      this.database.materials.where('projectId').equals(projectId).toArray(),
+      this.database.textureAssets.where('projectId').equals(projectId).toArray(),
+      this.database.textureBindings.where('projectId').equals(projectId).toArray(),
     ])
     const assets = [...new Map([...legacyAssets, ...currentAssets].map((asset) => [asset.id, asset])).values()]
     onStage?.('validating')
@@ -313,6 +420,47 @@ export class ProjectPackageService {
         path,
       })
     }
+    const packageResourceAssets: PackageResourceAssetRecord[] = []
+    for (const asset of resourceAssets) {
+      const path = `rework/assets/resources/${asset.id}.${asset.extension || 'bin'}`
+      entries[path] = await blobBytes(asset.blob)
+      packageResourceAssets.push({
+        id: asset.id,
+        resourceId: asset.resourceId,
+        kind: asset.kind,
+        name: asset.name,
+        extension: asset.extension,
+        mimeType: asset.mimeType,
+        byteLength: asset.byteLength,
+        createdAt: asset.createdAt,
+        updatedAt: asset.updatedAt,
+        path,
+      })
+    }
+    const packageTextureAssets: PackageTextureAssetRecord[] = []
+    for (const asset of textureAssets) {
+      const extension = asset.mimeType === 'image/png' ? 'png' : 'jpg'
+      const path = `rework/assets/textures/${asset.id}.${extension}`
+      entries[path] = await blobBytes(asset.blob)
+      packageTextureAssets.push({
+        id: asset.id,
+        name: asset.name,
+        mimeType: asset.mimeType,
+        width: asset.width,
+        height: asset.height,
+        createdAt: asset.createdAt,
+        updatedAt: asset.updatedAt,
+        path,
+      })
+    }
+    const reworkDataPath = 'rework/data.json'
+    const reworkData: PackageReworkData = {
+      resourceFolders: structuredClone(resourceFolders),
+      resources: structuredClone(resources),
+      materials: structuredClone(materials),
+      textureBindings: structuredClone(textureBindings),
+    }
+    entries[reworkDataPath] = strToU8(JSON.stringify(reworkData))
     const { folderId, ...portableProject } = project
     void folderId
     const manifest: ProjectPackageManifest = {
@@ -326,10 +474,21 @@ export class ProjectPackageService {
         groups: models.reduce((sum, model) => sum + (model.groups?.length ?? 0), 0),
         modelFolders: models.reduce((sum, model) => sum + (model.folders?.length ?? 0), 0),
         editorAssets: packageAssets.length,
+        resources: resources.length,
+        resourceFolders: resourceFolders.length,
+        resourceAssets: packageResourceAssets.length,
+        materials: materials.length,
+        textureAssets: packageTextureAssets.length,
+        textureBindings: textureBindings.length,
       },
       projectFolder: projectFolder ? { ...projectFolder } : undefined,
       models: packageModels,
       assets: packageAssets,
+      rework: {
+        dataPath: reworkDataPath,
+        resourceAssets: packageResourceAssets,
+        textureAssets: packageTextureAssets,
+      },
     }
     entries['manifest.json'] = strToU8(JSON.stringify(manifest, null, 2))
     onStage?.('finishing')
@@ -369,6 +528,16 @@ export class ProjectPackageService {
     for (const asset of parsed.assets) {
       if (!entries[asset.path]) {
         throw new AppError('PROJECT_IMPORT_FAILED', `The project package is missing editor asset “${asset.name}”.`)
+      }
+    }
+    if (parsed.formatVersion === PROJECT_PACKAGE_VERSION) {
+      if (!parsed.rework || !entries[parsed.rework.dataPath]) {
+        throw new AppError('PROJECT_IMPORT_FAILED', 'The project package is missing Rework resource data.')
+      }
+      for (const asset of [...parsed.rework.resourceAssets, ...parsed.rework.textureAssets]) {
+        if (!entries[asset.path]) {
+          throw new AppError('PROJECT_IMPORT_FAILED', `The project package is missing resource asset “${asset.name}”.`)
+        }
       }
     }
     const expandedBytes = Object.values(entries).reduce((sum, entry) => sum + entry.byteLength, 0)
@@ -427,8 +596,28 @@ export class ProjectPackageService {
         }
       : undefined
     importedProject.folderId = importedFolder?.id
+    const reworkData = inspected.manifest.formatVersion === PROJECT_PACKAGE_VERSION
+      ? readJson(inspected.entries, inspected.manifest.rework!.dataPath)
+      : { resourceFolders: [], resources: [], materials: [], textureBindings: [] }
+    if (!isReworkData(reworkData)) {
+      throw new AppError('PROJECT_IMPORT_FAILED', 'The project package contains invalid Rework resource data.')
+    }
+    const expectedReworkCounts = inspected.manifest.content
+    if ((expectedReworkCounts.resources ?? 0) !== reworkData.resources.length
+      || (expectedReworkCounts.resourceFolders ?? 0) !== reworkData.resourceFolders.length
+      || (expectedReworkCounts.materials ?? 0) !== reworkData.materials.length
+      || (expectedReworkCounts.textureBindings ?? 0) !== reworkData.textureBindings.length
+    ) {
+      throw new AppError('PROJECT_IMPORT_FAILED', 'The project package resource summary does not match its data.')
+    }
     const modelIds = new Map(inspected.manifest.models.map((entry) => [entry.id, createId()]))
     const assetIds = new Map(inspected.manifest.assets.map((entry) => [entry.id, createId()]))
+    const resourceIds = new Map(reworkData.resources.map((entry) => [entry.id, createId()]))
+    const resourceFolderIds = new Map(reworkData.resourceFolders.map((entry) => [entry.id, createId()]))
+    const resourceAssetIds = new Map((inspected.manifest.rework?.resourceAssets ?? []).map((entry) => [entry.id, createId()]))
+    const materialIds = new Map(reworkData.materials.map((entry) => [entry.id, createId()]))
+    const textureAssetIds = new Map((inspected.manifest.rework?.textureAssets ?? []).map((entry) => [entry.id, createId()]))
+    const modelNodeIds = new Map<string, ReturnType<typeof remapModelIds>>()
     const importedModels: StudioModel[] = []
     onStage?.('models')
     for (const entry of inspected.manifest.models) {
@@ -438,7 +627,8 @@ export class ProjectPackageService {
       if (!editor || editor.sourceModelId !== entry.id || !Array.isArray(editor.references) || !editor.editor) {
         throw new AppError('PROJECT_IMPORT_FAILED', 'The project package contains invalid Model Studio editor data.')
       }
-      remapModelIds(imported, imported.folders.map((folder) => folder.id))
+      const nodeIds = remapModelIds(imported, imported.folders.map((folder) => folder.id))
+      modelNodeIds.set(entry.id, nodeIds)
       imported.id = modelIds.get(entry.id)!
       imported.editor = cloneEditorState(editor.editor)
       imported.references = editor.references.map((reference) => ({
@@ -492,6 +682,95 @@ export class ProjectPackageService {
     if (importedAssets.some((asset) => !asset.modelId)) {
       throw new AppError('PROJECT_IMPORT_FAILED', 'An editor asset references a missing model.')
     }
+    if (resourceIds.size !== reworkData.resources.length
+      || resourceFolderIds.size !== reworkData.resourceFolders.length
+      || materialIds.size !== reworkData.materials.length
+    ) {
+      throw new AppError('PROJECT_IMPORT_FAILED', 'The project package contains duplicate Rework resource IDs.')
+    }
+    const importedResourceFolders: StudioResourceFolder[] = reworkData.resourceFolders.map((folder) => ({
+      ...structuredClone(folder),
+      id: resourceFolderIds.get(folder.id)!,
+      projectId,
+      parentId: folder.parentId ? resourceFolderIds.get(folder.parentId) : undefined,
+      createdAt: now,
+      updatedAt: now,
+    }))
+    if (reworkData.resourceFolders.some((folder) => folder.parentId && !resourceFolderIds.has(folder.parentId))) {
+      throw new AppError('PROJECT_IMPORT_FAILED', 'A resource folder points to a missing parent folder.')
+    }
+    const importedResources: StudioResource[] = reworkData.resources.map((resource) => ({
+      ...structuredClone(resource),
+      id: resourceIds.get(resource.id)!,
+      projectId,
+      folderId: resource.folderId ? resourceFolderIds.get(resource.folderId) : undefined,
+      payload: remapResourcePayload(resource, { resourceIds, resourceAssetIds, materialIds }),
+      createdAt: now,
+      updatedAt: now,
+      revision: 1,
+    }))
+    if (reworkData.resources.some((resource) => resource.folderId && !resourceFolderIds.has(resource.folderId))) {
+      throw new AppError('PROJECT_IMPORT_FAILED', 'A resource points to a missing project resource folder.')
+    }
+    const importedResourceAssets: StudioResourceAsset[] = (inspected.manifest.rework?.resourceAssets ?? []).map((asset) => ({
+      id: resourceAssetIds.get(asset.id)!,
+      projectId,
+      resourceId: asset.resourceId ? resourceIds.get(asset.resourceId) : undefined,
+      kind: asset.kind,
+      name: asset.name,
+      extension: asset.extension,
+      mimeType: asset.mimeType,
+      blob: new Blob([inspected.entries[asset.path]!], { type: asset.mimeType }),
+      byteLength: asset.byteLength,
+      createdAt: now,
+      updatedAt: now,
+    }))
+    if ((inspected.manifest.rework?.resourceAssets ?? []).some((asset) => asset.resourceId && !resourceIds.has(asset.resourceId))) {
+      throw new AppError('PROJECT_IMPORT_FAILED', 'A resource asset points to a missing project resource.')
+    }
+    const importedTextureAssets: StudioTextureAsset[] = (inspected.manifest.rework?.textureAssets ?? []).map((asset) => ({
+      id: textureAssetIds.get(asset.id)!,
+      projectId,
+      name: asset.name,
+      mimeType: asset.mimeType as StudioTextureAsset['mimeType'],
+      blob: new Blob([inspected.entries[asset.path]!], { type: asset.mimeType }),
+      width: asset.width,
+      height: asset.height,
+      createdAt: now,
+      updatedAt: now,
+    }))
+    const importedMaterials: StudioMaterial[] = reworkData.materials.map((material) => ({
+      ...structuredClone(material),
+      id: materialIds.get(material.id)!,
+      projectId,
+      folderId: material.folderId ? resourceFolderIds.get(material.folderId) : undefined,
+      textureAssetId: material.textureAssetId ? textureAssetIds.get(material.textureAssetId) : undefined,
+      createdAt: now,
+      updatedAt: now,
+      revision: 1,
+    }))
+    if (reworkData.materials.some((material) => (material.folderId && !resourceFolderIds.has(material.folderId))
+      || (material.textureAssetId && !textureAssetIds.has(material.textureAssetId)))) {
+      throw new AppError('PROJECT_IMPORT_FAILED', 'A material points to a missing folder or texture image.')
+    }
+    const importedTextureBindings: StudioTextureBinding[] = reworkData.textureBindings.map((binding) => {
+      const modelId = modelIds.get(binding.modelId)
+      const cubeId = modelNodeIds.get(binding.modelId)?.cubeIds.get(binding.cubeId)
+      const materialId = materialIds.get(binding.materialId)
+      if (!modelId || !cubeId || !materialId) {
+        throw new AppError('PROJECT_IMPORT_FAILED', 'A texture binding points to missing model data.')
+      }
+      return {
+        ...structuredClone(binding),
+        id: createId(),
+        projectId,
+        modelId,
+        cubeId,
+        materialId,
+        uv: { ...binding.uv },
+        updatedAt: now,
+      }
+    })
     const snapshot: ProjectSnapshot = {
       id: createId(),
       projectId,
@@ -509,6 +788,12 @@ export class ProjectPackageService {
           this.database.projectFolders,
           this.database.models,
           this.database.modelEditorAssets,
+          this.database.resources,
+          this.database.resourceFolders,
+          this.database.resourceAssets,
+          this.database.materials,
+          this.database.textureAssets,
+          this.database.textureBindings,
         ],
         async () => {
           if (importedFolder) await this.database.projectFolders.add(importedFolder)
@@ -516,6 +801,12 @@ export class ProjectPackageService {
           await this.database.snapshots.add(snapshot)
           if (importedModels.length) await this.database.models.bulkAdd(importedModels)
           if (importedAssets.length) await this.database.modelEditorAssets.bulkAdd(importedAssets)
+          if (importedResourceFolders.length) await this.database.resourceFolders.bulkAdd(importedResourceFolders)
+          if (importedResources.length) await this.database.resources.bulkAdd(importedResources)
+          if (importedResourceAssets.length) await this.database.resourceAssets.bulkAdd(importedResourceAssets)
+          if (importedTextureAssets.length) await this.database.textureAssets.bulkAdd(importedTextureAssets)
+          if (importedMaterials.length) await this.database.materials.bulkAdd(importedMaterials)
+          if (importedTextureBindings.length) await this.database.textureBindings.bulkAdd(importedTextureBindings)
         },
       )
       return { ...importedProject, icon: { ...importedProject.icon } }

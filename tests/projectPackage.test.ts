@@ -9,7 +9,9 @@ import { DEFAULT_BEDROCK_VERSION } from '@/core/project/bedrockVersions'
 import { ProjectFolderRepository } from '@/core/project/projectFolderRepository'
 import { ProjectPackageService } from '@/core/project/projectPackageService'
 import { ProjectRepository } from '@/core/project/projectRepository'
+import { ResourceRepository } from '@/core/resources/resourceRepository'
 import { AddonsStudioDatabase } from '@/core/storage/database'
+import { TextureRepository } from '@/core/texture/textureRepository'
 
 const inspectTestImage = async (file: File) => ({
   mimeType: file.type === 'image/jpeg' ? 'image/jpeg' as const : 'image/png' as const,
@@ -75,6 +77,24 @@ describe('Addons Studio project package beta', () => {
       ...asset,
       blob: new NodeBlob([index === 0 ? 'reference' : 'background'], { type: asset.mimeType }) as unknown as Blob,
     })))
+    const resources = new ResourceRepository(database)
+    const recipeFolder = await resources.createFolder({
+      projectId: project.id,
+      resourceType: 'recipe',
+      name: 'Crafting',
+    })
+    await resources.create({
+      projectId: project.id,
+      type: 'recipe',
+      folderId: recipeFolder.id,
+      name: 'Barrel Recipe',
+      identifier: 'portable_workshop:barrel',
+      payload: { kind: 'shaped', pattern: ['PPP', 'P P', 'PPP'] },
+    })
+    await new TextureRepository(database, inspectTestImage).createMaterial({
+      projectId: project.id,
+      name: 'Barrel Wood',
+    })
     return { project: (await projects.getProject(project.id))!, model, projectFolder }
   }
 
@@ -89,6 +109,9 @@ describe('Addons Studio project package beta', () => {
       groups: 1,
       modelFolders: 1,
       editorAssets: 2,
+      resources: 1,
+      resourceFolders: 1,
+      materials: 1,
     })
     expect(stages).toEqual(expect.arrayContaining(['reading', 'validating', 'models', 'assets', 'finishing']))
 
@@ -96,7 +119,7 @@ describe('Addons Studio project package beta', () => {
     expect(packages.previewPackage(inspected)).toMatchObject({
       name: 'Portable Workshop',
       namespace: 'portable_workshop',
-      formatVersion: 1,
+      formatVersion: 2,
     })
     const imported = await packages.importPackage(inspected)
     expect(imported.id).not.toBe(project.id)
@@ -110,6 +133,9 @@ describe('Addons Studio project package beta', () => {
     expect(importedModels[0]?.editor.background.type).toBe('custom')
     expect(importedAssets).toHaveLength(2)
     expect(importedAssets.every((asset) => asset.projectId === imported.id)).toBe(true)
+    expect(await database.resources.where('projectId').equals(imported.id).count()).toBe(1)
+    expect(await database.resourceFolders.where('projectId').equals(imported.id).count()).toBe(1)
+    expect(await database.materials.where('projectId').equals(imported.id).count()).toBe(1)
   })
 
   it('never overwrites project IDs or namespaces when the same package is imported twice', async () => {

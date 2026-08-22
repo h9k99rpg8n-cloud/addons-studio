@@ -16,7 +16,7 @@ const locale = useLocaleStore()
       <AppBadge tone="accent">{{ locale.t('Coming soon') }}</AppBadge>
       <h2>{{ locale.t('Mobile-friendly creator guides') }}</h2>
       <p>
-        {{ locale.t('Learn is reserved for guided Bedrock lessons. No fake tutorials or unfinished editors are included in Alpha 0.0.3.6.2.') }}
+        {{ locale.t('Learn is reserved for guided Bedrock lessons. No fake tutorials or unfinished editors are included.') }}
       </p>
       <ul>
         <li><StudioIcon name="block" :size="19" />{{ locale.t('Contextual object workflows') }}</li>

@@ -15,9 +15,9 @@ describe('ResourceTemplateRegistry', () => {
       name: 'Material',
       status: 'available',
     })
-    expect(registry.get('texture')).toMatchObject({
-      category: 'textures',
-      name: 'Texture Core',
+    expect(registry.get('block')).toMatchObject({
+      category: 'blocks',
+      name: 'Block',
       status: 'available',
     })
     expect(registry.get('model')).toMatchObject({
@@ -25,7 +25,8 @@ describe('ResourceTemplateRegistry', () => {
       name: 'Model',
       status: 'available',
     })
-    expect(registry.list()).toHaveLength(12)
+    expect(registry.get('texture')).toBeUndefined()
+    expect(registry.list()).toHaveLength(11)
   })
 
   it('prevents duplicate template ids', () => {

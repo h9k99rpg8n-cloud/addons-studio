@@ -296,7 +296,7 @@ async function submit(): Promise<void> {
         <label class="experiment-option">
           <span>
             <strong>{{ locale.t('Enable experimental project features') }}</strong>
-            <small>{{ locale.t('No unsupported Minecraft flags are applied in Alpha 0.0.3.6.2.') }}</small>
+            <small>{{ locale.t('No unsupported Minecraft experiment flags are applied.') }}</small>
           </span>
           <input v-model="form.experimentalFeatures" type="checkbox" role="switch" />
         </label>

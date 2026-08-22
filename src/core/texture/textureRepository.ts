@@ -101,6 +101,7 @@ export class TextureRepository {
     projectId: string
     name: string
     identifier?: string
+    folderId?: string
     /** Transitional caller compatibility; materials themselves remain project-scoped. */
     modelId?: string
   }): Promise<StudioMaterial> {
@@ -116,6 +117,7 @@ export class TextureRepository {
       projectId: input.projectId,
       name,
       identifier,
+      folderId: input.folderId,
       createdAt: now,
       updatedAt: now,
       revision: 1,
@@ -143,6 +145,56 @@ export class TextureRepository {
     }
     await this.database.materials.put(saved)
     return cloneMaterial(saved)
+  }
+
+  async moveMaterial(materialId: string, folderId?: string): Promise<StudioMaterial> {
+    const existing = await this.database.materials.get(materialId)
+    if (!existing) throw new AppError('MATERIAL_FAILED', 'This material is no longer available.')
+    if (folderId) {
+      const folder = await this.database.resourceFolders.get(folderId)
+      if (!folder || folder.projectId !== existing.projectId || folder.resourceType !== 'material') {
+        throw new AppError('MATERIAL_FAILED', 'The selected material folder is no longer available.')
+      }
+    }
+    const saved = { ...existing, folderId, updatedAt: Date.now(), revision: existing.revision + 1 }
+    await this.database.materials.put(saved)
+    return cloneMaterial(saved)
+  }
+
+  async duplicateMaterial(materialId: string): Promise<{ material: StudioMaterial; asset?: StudioTextureAsset }> {
+    const source = await this.database.materials.get(materialId)
+    if (!source) throw new AppError('MATERIAL_FAILED', 'This material is no longer available.')
+    const sourceAsset = source.textureAssetId
+      ? await this.database.textureAssets.get(source.textureAssetId)
+      : undefined
+    const now = Date.now()
+    const identifier = await this.findAvailableIdentifier(source.projectId, `${source.identifier}_copy`)
+    const asset = sourceAsset ? {
+      ...sourceAsset,
+      id: createId(),
+      blob: sourceAsset.blob,
+      createdAt: now,
+      updatedAt: now,
+    } : undefined
+    const material: StudioMaterial = {
+      ...source,
+      id: createId(),
+      name: `${source.name.slice(0, 75)} Copy`,
+      identifier,
+      textureAssetId: asset?.id,
+      createdAt: now,
+      updatedAt: now,
+      revision: 1,
+    }
+    await this.database.transaction('rw', [this.database.materials, this.database.textureAssets], async () => {
+      if (asset) await this.database.textureAssets.add(asset)
+      await this.database.materials.add(material)
+    })
+    return { material: cloneMaterial(material), asset: asset ? cloneAsset(asset) : undefined }
+  }
+
+  async countMaterialBindings(materialId: string): Promise<number> {
+    return this.database.textureBindings.where('materialId').equals(materialId).count()
   }
 
   async importTexture(materialId: string, file: File): Promise<{

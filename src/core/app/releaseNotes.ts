@@ -10,6 +10,19 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: readonly ReleaseNote[] = [
   {
     version: APP_VERSION,
+    title: 'Addons Studio, rebuilt around addons',
+    subtitle: 'Rework Update',
+    highlights: [
+      'A new yellow and graphite identity, original app icon, and mobile-first navigation for Home, Create, Assets, Code, World, and Project',
+      'Models are now organized as portable project files and opened in Blockbench instead of a competing in-app model engine',
+      'Materials is now a reusable image library with folders, search, usage details, and Blockbench handoff—without a duplicate paint editor',
+      'The first guided Block and Block Model creator generates real Bedrock project files while hiding options that are not enabled',
+      'Existing projects, legacy models, textures, folders, and editor assets remain stored and can be migrated without resetting IndexedDB',
+      'Future tools appear only when they are ready; Addons Studio now concentrates on organization, automation, and Bedrock workflows',
+    ],
+  },
+  {
+    version: '0.0.4.3',
     title: 'Texture Core Stabilized',
     subtitle: 'Stability, Mobile Polish & Bug Fixes',
     highlights: [

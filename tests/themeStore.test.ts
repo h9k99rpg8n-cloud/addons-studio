@@ -33,7 +33,7 @@ describe('theme store', () => {
     expect(localStorage.getItem('addons-studio:theme')).toBe('light')
     expect(document.documentElement.dataset.theme).toBe('light')
     expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe(
-      '#f3f7f4',
+      '#f3f3f1',
     )
   })
 })

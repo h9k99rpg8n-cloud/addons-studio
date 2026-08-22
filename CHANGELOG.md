@@ -10,6 +10,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Scope to be selected for the next development prompt; no future editor is implied as complete.
 
+## [0.1.0] - 2026-08-22
+
+### Added
+
+- New original yellow/graphite Rework identity, crossed-tools block icon, favicon, Apple icon, and PWA any/maskable assets.
+- Home/Create/Assets/Code/World/Project navigation for mobile bottom bars and larger-screen side rails.
+- Generic versioned project resources, organizational folders, and binary-asset stores in IndexedDB schema 5.
+- Portable Models library with Bedrock JSON, `.geo.json`, `.bbmodel`, and legacy Studio JSON inspection plus Blockbench handoff.
+- Project Materials image library with folders, search, preview, rename, move, duplicate, delete, usage details, and Blockbench handoff.
+- Guided Block and Block Model creation with translations, reusable textures, contextual lighting and physical settings, CSS cube preview, and Bedrock source ZIP generation.
+- `.addonsstudio` package format 2 with Rework resources, material images, folders, and compatibility import for format 1 packages.
+
+### Changed
+
+- Repositioned Addons Studio as the Bedrock project hub for organization, automation, reusable logic, and generated files.
+- Retired the in-app Three.js Model Studio and UV/Paint Texture Core UI in favor of specialist-tool integration; Three.js is no longer a runtime dependency.
+- Replaced the permanent green identity with yellow brand accents, graphite navigation, and neutral panels.
+- Updated Home, project workspace, cards, headers, sheets, empty states, settings metadata, release notes, English/Spanish strings, and documentation.
+- Blocks are now available in the contextual resource registry; planned modules are explicitly non-interactive instead of behaving like dead buttons, and unfinished World tools remain hidden.
+
+### Preserved
+
+- Existing projects, project folders, recovery snapshots, legacy models, references/backgrounds, texture blobs, materials, bindings, settings, and migrations.
+- GitHub Pages base-path behavior, hash routing, PWA installation/offline shell, light/dark/system themes, and MIT licensing.
+
 ## [0.0.4.3] - 2026-08-20
 
 ### Fixed
@@ -203,7 +228,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - GitHub Actions workflows for CI and GitHub Pages.
 - Project, contribution, security, architecture, license, and third-party documentation.
 
-[Unreleased]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.4.3...HEAD
+[Unreleased]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.4.3...v0.1.0
 [0.0.4.3]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.4.2...v0.0.4.3
 [0.0.4.2]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.4.0.1...v0.0.4.2
 [0.0.4.0.1]: https://github.com/h9k99rpg8n-cloud/addons-studio/compare/v0.0.4.0...v0.0.4.0.1

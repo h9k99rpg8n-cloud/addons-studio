@@ -4,8 +4,8 @@ import type { ResolvedTheme, ThemePreference } from '@/types/app'
 
 const THEME_KEY = 'addons-studio:theme'
 const THEME_COLOR: Record<ResolvedTheme, string> = {
-  light: '#f3f7f4',
-  dark: '#0b1016',
+  light: '#f3f3f1',
+  dark: '#0c0d10',
 }
 
 function loadPreference(): ThemePreference {

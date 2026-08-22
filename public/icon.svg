@@ -1,11 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
-  <title id="title">Addons Studio Creative Core app icon</title>
-  <rect width="512" height="512" rx="116" fill="#0b1016"/>
-  <rect x="22" y="22" width="468" height="468" rx="98" fill="none" stroke="#26333f" stroke-width="4"/>
-  <path d="m256 82 154 86-154 87-154-87Z" fill="#173b29"/>
-  <path d="m102 168 154 87v177l-154-87Z" fill="#35c86e"/>
-  <path d="m410 168-154 87v177l154-87Z" fill="#168b4b"/>
-  <path d="M256 82 410 168v177l-154 87-154-87V168Zm-154 86 154 87 154-87M256 255v177" fill="none" stroke="#88ebaa" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="m256 198 58 33v66l-58 33-58-33v-66Z" fill="#f0b94d" stroke="#ffd47a" stroke-width="12" stroke-linejoin="round"/>
-  <path d="m198 231 58 33 58-33M256 264v66" fill="none" stroke="#8d5b00" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <title id="title">Addons Studio Rework app icon</title>
+  <rect width="512" height="512" rx="116" fill="#f5c518"/>
+  <path d="M122 98 414 390M390 92l-55 15-18 57 43 43 57-18 15-55-42-42Z" fill="none" stroke="#111318" stroke-width="47" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M397 106 112 397M92 345l75 75M345 92l75 75" fill="none" stroke="#111318" stroke-width="47" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m256 172 112 63-112 63-112-63Z" fill="#fff3bd" stroke="#111318" stroke-width="24" stroke-linejoin="round"/>
+  <path d="m144 235 112 63v126l-112-63Z" fill="#f0bd0e" stroke="#111318" stroke-width="24" stroke-linejoin="round"/>
+  <path d="m368 235-112 63v126l112-63Z" fill="#cf9800" stroke="#111318" stroke-width="24" stroke-linejoin="round"/>
 </svg>

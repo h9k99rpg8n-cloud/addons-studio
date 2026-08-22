@@ -11,24 +11,16 @@ export interface ResourceCategoryDefinition {
 }
 
 export const RESOURCE_CATEGORIES: readonly ResourceCategoryDefinition[] = [
-  { id: 'blocks', label: 'Blocks', description: 'Custom Bedrock blocks', icon: 'block', tone: 'brand', status: 'coming_soon' },
+  { id: 'blocks', label: 'Blocks', description: 'Guided Bedrock blocks', icon: 'block', tone: 'brand', status: 'available' },
   { id: 'items', label: 'Items', description: 'Tools, food, and objects', icon: 'item', tone: 'gold', status: 'coming_soon' },
   { id: 'entities', label: 'Entities', description: 'Mobs and custom actors', icon: 'entity', tone: 'orange', status: 'coming_soon' },
-  { id: 'models', label: 'Models', description: 'Create cube-based geometry', icon: 'model', tone: 'sky', status: 'available' },
+  { id: 'models', label: 'Models', description: 'Blockbench model library', icon: 'model', tone: 'sky', status: 'available' },
   {
     id: 'materials',
     label: 'Materials',
-    description: 'Create and organize project materials',
+    description: 'Import and organize reusable images',
     icon: 'material',
     tone: 'gold',
-    status: 'available',
-  },
-  {
-    id: 'textures',
-    label: 'Texture Core',
-    description: 'UV mapping and pixel texture editing',
-    icon: 'layers',
-    tone: 'brand',
     status: 'available',
   },
   { id: 'animations', label: 'Animations', description: 'Motion and timelines', icon: 'animation', tone: 'violet', status: 'coming_soon' },

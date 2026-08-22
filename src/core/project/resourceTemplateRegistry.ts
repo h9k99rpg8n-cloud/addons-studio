@@ -41,8 +41,8 @@ export const INITIAL_RESOURCE_TEMPLATES: readonly ResourceTemplate[] = [
     name: 'Block',
     icon: 'block',
     tone: 'brand',
-    description: 'Guided block creation will arrive in a future update.',
-    status: 'coming_soon',
+    description: 'Create a standard Bedrock block with guided, contextual settings.',
+    status: 'available',
   },
   {
     id: 'item',
@@ -81,7 +81,7 @@ export const INITIAL_RESOURCE_TEMPLATES: readonly ResourceTemplate[] = [
     name: 'Model',
     icon: 'model',
     tone: 'sky',
-    description: 'Create a cube-based model in Model Studio.',
+    description: 'Store a Bedrock or Blockbench model and continue editing in Blockbench.',
     status: 'available',
   },
   {
@@ -91,17 +91,7 @@ export const INITIAL_RESOURCE_TEMPLATES: readonly ResourceTemplate[] = [
     name: 'Material',
     icon: 'material',
     tone: 'gold',
-    description: 'Create a Texture Core material and attach a PNG or JPEG texture.',
-    status: 'available',
-  },
-  {
-    id: 'texture',
-    category: 'textures',
-    group: 'resources',
-    name: 'Texture Core',
-    icon: 'layers',
-    tone: 'brand',
-    description: 'Texture a Model Core resource with UV bindings and pixel tools.',
+    description: 'Import and reuse a PNG or JPEG image from the project material library.',
     status: 'available',
   },
   {

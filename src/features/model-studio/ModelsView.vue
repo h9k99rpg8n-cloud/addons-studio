@@ -1,544 +1,318 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref } from 'vue'
 
 import AppButton from '@/components/common/AppButton.vue'
 import AppDialog from '@/components/common/AppDialog.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
-import IconButton from '@/components/common/IconButton.vue'
-import StudioIcon from '@/components/common/StudioIcon.vue'
+import StudioPageHeader from '@/components/common/StudioPageHeader.vue'
+import { useProjectContext } from '@/composables/useProjectContext'
 import { toAppError } from '@/core/errors/AppError'
-import { modelRepository } from '@/core/model/modelRepository'
-import { importModelJson } from '@/core/model/portability/modelJsonImporter'
 import {
-  createModelIdentifier,
-  validateModelInput,
-} from '@/core/model/modelValidation'
-import { useProjectStore } from '@/stores/projects'
+  BLOCKBENCH_WEB_URL,
+  buildBlockbenchUrl,
+  createStarterBedrockModel,
+  inspectModelFile,
+  modelPayload,
+  safeModelFilename,
+} from '@/core/integrations/blockbenchIntegration'
+import { resourceRepository } from '@/core/resources/resourceRepository'
 import { useLocaleStore } from '@/stores/locale'
 import { useToastStore } from '@/stores/toasts'
-import type { StudioModel } from '@/types/model'
+import type { ModelResourcePayload, StudioResource, StudioResourceFolder } from '@/types/resource'
+import { downloadBlob } from '@/utils/download'
 
 const props = defineProps<{ projectId: string }>()
-const router = useRouter()
-const projects = useProjectStore()
-const toasts = useToastStore()
 const locale = useLocaleStore()
-const models = ref<StudioModel[]>([])
-const loading = ref(true)
+const toasts = useToastStore()
+const { project, loading: projectLoading, error: projectError } = useProjectContext(() => props.projectId)
+
+const models = ref<StudioResource<ModelResourcePayload>[]>([])
+const folders = ref<StudioResourceFolder[]>([])
+const query = ref('')
+const folderFilter = ref('root')
+const busy = ref(false)
 const loadError = ref('')
 const createOpen = ref(false)
-const deleteOpen = ref(false)
-const selectedModel = ref<StudioModel>()
-const modelName = ref('')
-const identifier = ref('')
-const identifierTouched = ref(false)
-const nameError = ref('')
-const identifierError = ref('')
-const busy = ref(false)
+const folderOpen = ref(false)
+const folderActionsOpen = ref(false)
+const actionsOpen = ref(false)
 const importInput = ref<HTMLInputElement>()
+const modelName = ref('New Model')
+const identifier = ref('')
+const folderName = ref('')
+const selected = ref<StudioResource<ModelResourcePayload>>()
+const editName = ref('')
+const editFolder = ref('')
+const editFolderName = ref('')
+const activeFolder = computed(() => folders.value.find((folder) => folder.id === folderFilter.value))
 
-const project = computed(() =>
-  projects.activeProject?.id === props.projectId
-    ? projects.activeProject
-    : projects.projects.find((entry) => entry.id === props.projectId),
-)
-
-watch(modelName, (name) => {
-  if (!identifierTouched.value && project.value) {
-    identifier.value = createModelIdentifier(project.value.namespace, name)
-  }
+const filteredModels = computed(() => {
+  const needle = query.value.trim().toLowerCase()
+  return models.value.filter((model) => {
+    const inFolder = folderFilter.value === 'all'
+      || (folderFilter.value === 'root' ? !model.folderId : model.folderId === folderFilter.value)
+    const matches = !needle || `${model.name} ${model.identifier ?? ''} ${model.payload.originalFilename}`.toLowerCase().includes(needle)
+    return inFolder && matches
+  })
 })
 
-onMounted(async () => {
+async function loadLibrary(): Promise<void> {
   try {
-    await projects.loadProjects()
-    await projects.openProject(props.projectId)
-    models.value = await modelRepository.listModels(props.projectId)
+    ;[models.value, folders.value] = await Promise.all([
+      resourceRepository.list<ModelResourcePayload>(props.projectId, 'model'),
+      resourceRepository.listFolders(props.projectId, 'model'),
+    ])
   } catch (error) {
-    loadError.value = toAppError(error, locale.t('Addons Studio could not load model resources.')).userMessage
-  } finally {
-    loading.value = false
+    loadError.value = toAppError(error, locale.t('Addons Studio could not load Models.')).userMessage
   }
-})
+}
 
-function startCreate(): void {
-  modelName.value = ''
-  identifier.value = project.value
-    ? createModelIdentifier(project.value.namespace, '')
-    : 'geometry.project.model'
-  identifierTouched.value = false
-  nameError.value = ''
-  identifierError.value = ''
+void loadLibrary()
+
+function openCreate(): void {
+  modelName.value = locale.t('New Model')
+  const safe = `model_${models.value.length + 1}`
+  identifier.value = `geometry.${project.value?.namespace ?? 'addons_studio'}.${safe}`
   createOpen.value = true
 }
 
-async function createModel(): Promise<void> {
-  const issues = validateModelInput({ name: modelName.value, identifier: identifier.value })
-  nameError.value = issues.find((issue) => issue.field === 'name')?.message ?? ''
-  identifierError.value = issues.find((issue) => issue.field === 'identifier')?.message ?? ''
-  if (issues.length) return
-
-  busy.value = true
+async function persistModelFile(input: { name: string; identifier?: string; inspection: Awaited<ReturnType<typeof inspectModelFile>> | ReturnType<typeof createStarterBedrockModel>; filename: string }): Promise<StudioResource<ModelResourcePayload>> {
+  const normalizedFile = new File([input.inspection.text], input.filename, { type: 'application/json' })
+  const asset = await resourceRepository.addAsset({ projectId: props.projectId, kind: 'model', file: normalizedFile })
   try {
-    const model = await modelRepository.createModel({
+    const resource = await resourceRepository.create<ModelResourcePayload>({
       projectId: props.projectId,
-      name: modelName.value,
-      identifier: identifier.value,
+      type: 'model',
+      name: input.name,
+      identifier: input.identifier,
+      payload: modelPayload(input.inspection, asset.id, input.filename),
     })
-    models.value.unshift(model)
-    createOpen.value = false
-    toasts.push({ type: 'success', message: locale.t('Model created') })
-    await router.push({
-      name: 'model-studio',
-      params: { projectId: props.projectId, modelId: model.id },
-    })
+    await resourceRepository.attachAsset(asset.id, resource.id)
+    models.value.unshift(resource)
+    return resource
   } catch (error) {
-    identifierError.value = toAppError(error, locale.t('Addons Studio could not create this model.')).userMessage
-  } finally {
-    busy.value = false
+    await resourceRepository.deleteAsset(asset.id)
+    throw error
   }
 }
 
-function confirmDelete(model: StudioModel): void {
-  selectedModel.value = model
-  deleteOpen.value = true
-}
-
-async function deleteModel(): Promise<void> {
-  if (!selectedModel.value) return
-  busy.value = true
-  try {
-    const id = selectedModel.value.id
-    await modelRepository.deleteModel(id)
-    models.value = models.value.filter((model) => model.id !== id)
-    deleteOpen.value = false
-    toasts.push({ type: 'success', message: locale.t('Model deleted') })
-  } catch (error) {
-    toasts.push({
-      type: 'error',
-      message: toAppError(error, locale.t('Addons Studio could not delete this model.')).userMessage,
-    })
-  } finally {
-    busy.value = false
+async function createModel(): Promise<void> {
+  if (!/^geometry\.[a-z0-9_]+(?:\.[a-z0-9_]+)+$/.test(identifier.value)) {
+    toasts.push({ type: 'warning', message: locale.t('Use a geometry identifier such as geometry.namespace.model_name.') })
+    return
   }
-}
-
-function openImportPicker(): void {
-  importInput.value?.click()
-}
-
-async function importJson(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
+  const popup = window.open('about:blank', '_blank')
+  if (popup) popup.opener = null
   busy.value = true
   try {
-    if (!file.name.toLowerCase().endsWith('.json')) {
-      throw new Error(locale.t('Choose a JSON model file.'))
+    const inspection = createStarterBedrockModel({ name: modelName.value, identifier: identifier.value })
+    const filename = safeModelFilename(modelName.value, inspection.format)
+    await persistModelFile({ name: modelName.value, identifier: identifier.value, inspection, filename })
+    const url = buildBlockbenchUrl(filename, inspection.text)
+    if (popup && url) popup.location.replace(url)
+    else {
+      popup?.close()
+      downloadBlob(new Blob([inspection.text], { type: 'application/json' }), filename)
+      window.open(BLOCKBENCH_WEB_URL, '_blank', 'noopener,noreferrer')
     }
-    const result = importModelJson(await file.text(), props.projectId)
-    const imported = await modelRepository.importModel(result.model)
-    models.value.unshift(imported)
-    toasts.push({
-      type: 'success',
-      message: result.draft.warnings.length
-        ? locale.t('Geometry imported. {warning}', {
-            warning: result.draft.warnings.map((warning) => locale.t(warning)).join(' '),
-          })
-        : locale.t('Model imported successfully.'),
-    })
-    await router.push({
-      name: 'model-studio',
-      params: { projectId: props.projectId, modelId: imported.id },
-    })
+    createOpen.value = false
+    toasts.push({ type: 'success', message: locale.t('Model created and prepared for Blockbench.') })
   } catch (error) {
-    toasts.push({
-      type: 'error',
-      message: toAppError(error, locale.t('This JSON file is not a recognized model format.')).userMessage,
-    })
+    popup?.close()
+    toasts.push({ type: 'error', message: toAppError(error, locale.t('Addons Studio could not create this model.')).userMessage })
   } finally {
-    input.value = ''
     busy.value = false
   }
+}
+
+async function importModels(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const files = [...(input.files ?? [])]
+  if (!files.length) return
+  busy.value = true
+  let imported = 0
+  for (const file of files) {
+    try {
+      const inspection = await inspectModelFile(file)
+      const filename = safeModelFilename(inspection.name, inspection.format)
+      await persistModelFile({ name: inspection.name, identifier: inspection.identifier, inspection, filename })
+      imported += 1
+    } catch (error) {
+      toasts.push({ type: 'error', message: `${file.name}: ${toAppError(error, locale.t('Model import failed.')).userMessage}` })
+    }
+  }
+  if (imported) toasts.push({ type: 'success', message: locale.t('{count} model files imported.', { count: imported }) })
+  input.value = ''
+  busy.value = false
+}
+
+async function openInBlockbench(model: StudioResource<ModelResourcePayload>): Promise<void> {
+  const popup = window.open('about:blank', '_blank')
+  if (popup) popup.opener = null
+  try {
+    const asset = await resourceRepository.getAsset(model.payload.assetId)
+    if (!asset) throw new Error('Missing model asset')
+    const text = await asset.blob.text()
+    const url = buildBlockbenchUrl(model.payload.originalFilename, text)
+    if (popup && url) {
+      popup.location.replace(url)
+      return
+    }
+    if (popup) popup.location.replace(BLOCKBENCH_WEB_URL)
+    else window.open(BLOCKBENCH_WEB_URL, '_blank', 'noopener,noreferrer')
+    downloadBlob(asset.blob, model.payload.originalFilename)
+    toasts.push({ type: 'info', message: locale.t('The model was downloaded. Import it from Blockbench’s File menu.') })
+  } catch (error) {
+    popup?.close()
+    toasts.push({ type: 'error', message: toAppError(error, locale.t('Addons Studio could not open this model.')).userMessage })
+  }
+}
+
+async function downloadModel(model: StudioResource<ModelResourcePayload>): Promise<void> {
+  const asset = await resourceRepository.getAsset(model.payload.assetId)
+  if (!asset) return
+  downloadBlob(asset.blob, model.payload.originalFilename)
+}
+
+function openActions(model: StudioResource<ModelResourcePayload>): void {
+  selected.value = model
+  editName.value = model.name
+  editFolder.value = model.folderId ?? ''
+  actionsOpen.value = true
+}
+
+async function saveActions(): Promise<void> {
+  if (!selected.value) return
+  const updated = await resourceRepository.update<ModelResourcePayload>(selected.value.id, {
+    name: editName.value,
+    folderId: editFolder.value || undefined,
+  })
+  models.value = models.value.map((model) => model.id === updated.id ? updated : model)
+  actionsOpen.value = false
+}
+
+async function deleteSelected(): Promise<void> {
+  if (!selected.value) return
+  await resourceRepository.delete(selected.value.id)
+  models.value = models.value.filter((model) => model.id !== selected.value?.id)
+  actionsOpen.value = false
+  toasts.push({ type: 'success', message: locale.t('Model removed from this project library.') })
+}
+
+async function createFolder(): Promise<void> {
+  try {
+    const folder = await resourceRepository.createFolder({ projectId: props.projectId, resourceType: 'model', name: folderName.value })
+    folders.value.push(folder)
+    folderName.value = ''
+    folderOpen.value = false
+  } catch (error) {
+    toasts.push({ type: 'error', message: toAppError(error, locale.t('Addons Studio could not create this folder.')).userMessage })
+  }
+}
+
+function openFolderActions(): void {
+  if (!activeFolder.value) return
+  editFolderName.value = activeFolder.value.name
+  folderActionsOpen.value = true
+}
+
+async function renameActiveFolder(): Promise<void> {
+  if (!activeFolder.value) return
+  const updated = await resourceRepository.renameFolder(activeFolder.value.id, editFolderName.value)
+  folders.value = folders.value.map((folder) => folder.id === updated.id ? updated : folder)
+  folderActionsOpen.value = false
+}
+
+async function deleteActiveFolder(): Promise<void> {
+  if (!activeFolder.value) return
+  const id = activeFolder.value.id
+  await resourceRepository.deleteFolder(id)
+  folders.value = folders.value.filter((folder) => folder.id !== id && folder.parentId !== id)
+  models.value = models.value.map((model) => model.folderId === id
+    ? { ...model, folderId: undefined }
+    : model)
+  folderFilter.value = 'root'
+  folderActionsOpen.value = false
 }
 </script>
 
 <template>
   <main class="models-view">
-    <header class="models-topbar">
-      <IconButton
-        icon="arrow-left"
-        :label="locale.t('Back to project workspace')"
-        @click="router.push({ name: 'workspace', params: { id: projectId } })"
-      />
-      <div><strong>{{ locale.t('Models') }}</strong><small>{{ project?.name ?? locale.t('Project') }}</small></div>
-      <IconButton icon="plus" :label="locale.t('Create Model')" variant="surface" @click="startCreate" />
-    </header>
+    <StudioPageHeader
+      :title="locale.t('Models')"
+      :subtitle="project?.name"
+      :eyebrow="locale.t('Blockbench model library')"
+      icon="cuboid"
+    >
+      <template #actions>
+        <button class="header-action" type="button" :aria-label="locale.t('Import model')" @click="importInput?.click()"><AppIcon name="upload" :size="21" /></button>
+        <button class="header-action header-action--primary" type="button" :aria-label="locale.t('Create Model')" @click="openCreate"><AppIcon name="plus" :size="21" /></button>
+      </template>
+    </StudioPageHeader>
 
-    <section v-if="loading" class="models-content models-grid" :aria-label="locale.t('Loading models')">
-      <div v-for="index in 3" :key="index" class="skeleton model-skeleton" />
-    </section>
+    <div class="models-body">
+      <section v-if="projectLoading" class="state">{{ locale.t('Opening project') }}</section>
+      <section v-else-if="projectError || loadError || !project" class="state state--error">{{ projectError || loadError }}</section>
+      <template v-else>
+        <section class="integration-banner">
+          <div><span><AppIcon name="cuboid" :size="26" /></span><div><strong>Blockbench</strong><p>{{ locale.t('Addons Studio stores and organizes your model files. Blockbench handles modeling, UV, textures, and animation.') }}</p></div></div>
+          <a :href="BLOCKBENCH_WEB_URL" target="_blank" rel="noopener noreferrer">{{ locale.t('Open Blockbench') }} <AppIcon name="external-link" :size="16" /></a>
+        </section>
 
-    <section v-else-if="loadError || !project" class="model-empty">
-      <span><AppIcon name="alert-triangle" :size="30" /></span>
-      <h1>{{ locale.t('Models unavailable') }}</h1>
-      <p>{{ loadError || locale.t('This local project could not be found.') }}</p>
-      <AppButton @click="router.replace({ name: 'projects' })">{{ locale.t('Back to Projects') }}</AppButton>
-    </section>
-
-    <div v-else class="models-content">
-      <section class="models-intro">
-        <span class="icon-surface tone-sky"><StudioIcon name="model" :size="31" /></span>
-        <div>
-          <p class="eyebrow">{{ locale.t('Modeling Workflow') }}</p>
-          <h1>{{ locale.t('Cube-based Bedrock modeling') }}</h1>
-          <p>{{ locale.t('Create geometry locally with touch tools, exact numeric transforms, references, and autosave.') }}</p>
+        <div class="library-tools">
+          <label class="search"><AppIcon name="search" :size="19" /><input v-model="query" type="search" :placeholder="locale.t('Search models')" /></label>
+          <button type="button" @click="folderOpen = true"><AppIcon name="folder-plus" :size="19" />{{ locale.t('Folder') }}</button>
+          <button v-if="activeFolder" type="button" :aria-label="locale.t('Folder actions')" @click="openFolderActions"><AppIcon name="more-vertical" :size="19" /></button>
         </div>
-      </section>
 
-      <section v-if="models.length" class="models-section" aria-labelledby="model-list-heading">
-        <header><h2 id="model-list-heading">{{ locale.t('Project Models') }}</h2><span>{{ models.length }}</span></header>
-        <div class="models-grid">
-          <article v-for="model in models" :key="model.id" class="model-card">
-            <button
-              type="button"
-              class="model-card__open"
-              @click="router.push({ name: 'model-studio', params: { projectId, modelId: model.id } })"
-            >
-              <span class="model-card__icon"><StudioIcon name="model" :size="27" /></span>
-              <span class="model-card__copy">
-                <strong>{{ model.name }}</strong>
-                <code>{{ model.identifier }}</code>
-                <small>{{ locale.t('{cubes} cubes · {references} references', { cubes: model.elements.length, references: model.references.length }) }}</small>
-              </span>
-              <AppIcon name="chevron-right" :size="19" />
-            </button>
-            <IconButton
-              class="model-card__delete"
-              icon="trash"
-              :label="locale.t('Delete {name}', { name: model.name })"
-              variant="danger"
-              @click="confirmDelete(model)"
-            />
+        <div v-if="folders.length" class="folder-tabs" role="list">
+          <button type="button" :class="{ active: folderFilter === 'root' }" @click="folderFilter = 'root'">{{ locale.t('Root') }}</button>
+          <button type="button" :class="{ active: folderFilter === 'all' }" @click="folderFilter = 'all'">{{ locale.t('All') }}</button>
+          <button v-for="folder in folders" :key="folder.id" type="button" :class="{ active: folderFilter === folder.id }" @click="folderFilter = folder.id">{{ folder.name }}</button>
+        </div>
+
+        <section v-if="filteredModels.length" class="model-grid">
+          <article v-for="model in filteredModels" :key="model.id" class="model-card">
+            <div class="model-card__preview"><AppIcon name="cuboid" :size="36" /><span>{{ model.payload.format === 'bbmodel' ? 'BB' : 'GEO' }}</span></div>
+            <div class="model-card__copy"><strong>{{ model.name }}</strong><code>{{ model.identifier || model.payload.originalFilename }}</code><small>{{ model.payload.cubeCount ?? '—' }} {{ locale.t('cubes') }} · {{ model.payload.boneCount ?? '—' }} {{ locale.t('bones') }}</small></div>
+            <button type="button" class="model-card__open" @click="openInBlockbench(model)">{{ locale.t('Edit in Blockbench') }}</button>
+            <button type="button" class="model-card__menu" :aria-label="locale.t('Model actions')" @click="openActions(model)"><AppIcon name="more-vertical" :size="20" /></button>
           </article>
-        </div>
-      </section>
-
-      <section v-else class="model-empty">
-        <span><StudioIcon name="model" :size="36" /></span>
-        <h2>{{ locale.t('No models yet') }}</h2>
-        <p>{{ locale.t('Create the first model resource in this project. Nothing is exported to Minecraft yet.') }}</p>
-        <AppButton size="large" @click="startCreate">
-          <template #icon><AppIcon name="plus" :size="21" /></template>
-          {{ locale.t('Create Model') }}
-        </AppButton>
-      </section>
+        </section>
+        <section v-else class="empty">
+          <span><AppIcon name="cuboid" :size="34" /></span><h2>{{ locale.t('No models here') }}</h2><p>{{ locale.t('Create a prepared Bedrock cube or import .json, .geo.json, or .bbmodel.') }}</p><AppButton size="large" @click="openCreate">{{ locale.t('Create Model') }}</AppButton>
+        </section>
+      </template>
     </div>
 
-    <footer v-if="project && !loading" class="models-create">
-      <AppButton variant="secondary" size="large" :disabled="busy" @click="openImportPicker">
-        <template #icon><AppIcon name="download" :size="21" /></template>
-        {{ locale.t('Import JSON') }}
-      </AppButton>
-      <AppButton block size="large" @click="startCreate">
-        <template #icon><AppIcon name="plus" :size="21" /></template>
-        {{ locale.t('Create Model') }}
-      </AppButton>
-    </footer>
+    <input ref="importInput" class="visually-hidden" type="file" multiple accept=".json,.geo.json,.bbmodel,application/json" @change="importModels" />
 
-    <input ref="importInput" class="visually-hidden" type="file" accept="application/json,.json" @change="importJson" />
-
-    <AppDialog
-      :open="createOpen"
-      :title="locale.t('Create Model')"
-      :description="locale.t('The identifier becomes the future Bedrock geometry identifier.')"
-      @close="createOpen = false"
-    >
-      <div class="model-form">
-        <label for="model-name">{{ locale.t('Model Name') }}</label>
-        <input
-          id="model-name"
-          v-model="modelName"
-          class="text-input"
-          maxlength="80"
-          autocomplete="off"
-          placeholder="Vertical Slab"
-          :aria-invalid="Boolean(nameError)"
-        />
-        <p v-if="nameError" class="field-error" role="alert">{{ nameError }}</p>
-
-        <label for="model-identifier">{{ locale.t('Identifier') }}</label>
-        <input
-          id="model-identifier"
-          v-model="identifier"
-          class="text-input model-identifier"
-          maxlength="128"
-          autocapitalize="none"
-          autocomplete="off"
-          spellcheck="false"
-          :aria-invalid="Boolean(identifierError)"
-          @input="identifierTouched = true"
-          @keydown.enter.prevent="createModel"
-        />
-        <p v-if="identifierError" class="field-error" role="alert">{{ identifierError }}</p>
-      </div>
-      <template #actions>
-        <AppButton variant="ghost" @click="createOpen = false">{{ locale.t('Cancel') }}</AppButton>
-        <AppButton :loading="busy" @click="createModel">{{ locale.t('Create Model') }}</AppButton>
-      </template>
+    <AppDialog :open="createOpen" :title="locale.t('Create Model in Blockbench')" :description="locale.t('A 16×16×16 Bedrock cube will be stored locally and opened in Blockbench.')" @close="createOpen = false">
+      <label class="field">{{ locale.t('Model Name') }}<input v-model="modelName" maxlength="80" /></label>
+      <label class="field">{{ locale.t('Identifier') }}<input v-model="identifier" autocapitalize="off" spellcheck="false" /></label>
+      <template #actions><AppButton variant="ghost" @click="createOpen = false">{{ locale.t('Cancel') }}</AppButton><AppButton :loading="busy" @click="createModel">{{ locale.t('Create & Open') }}</AppButton></template>
     </AppDialog>
 
-    <AppDialog
-      :open="deleteOpen"
-      :title="locale.t('Delete “{name}”?', { name: selectedModel?.name ?? locale.t('Model') })"
-      :description="locale.t('The model and its reference images will be removed from this device. The project itself stays safe.')"
-      @close="deleteOpen = false"
-    >
-      <template #actions>
-        <AppButton variant="ghost" @click="deleteOpen = false">{{ locale.t('Cancel') }}</AppButton>
-        <AppButton variant="danger" :loading="busy" @click="deleteModel">{{ locale.t('Delete Model') }}</AppButton>
-      </template>
+    <AppDialog :open="folderOpen" :title="locale.t('New Model Folder')" @close="folderOpen = false">
+      <label class="field">{{ locale.t('Folder Name') }}<input v-model="folderName" maxlength="80" @keydown.enter.prevent="createFolder" /></label>
+      <template #actions><AppButton variant="ghost" @click="folderOpen = false">{{ locale.t('Cancel') }}</AppButton><AppButton @click="createFolder">{{ locale.t('Create Folder') }}</AppButton></template>
+    </AppDialog>
+
+    <AppDialog :open="actionsOpen" :title="locale.t('Model actions')" @close="actionsOpen = false">
+      <label class="field">{{ locale.t('Name') }}<input v-model="editName" maxlength="80" /></label>
+      <label class="field">{{ locale.t('Folder') }}<select v-model="editFolder"><option value="">{{ locale.t('Root') }}</option><option v-for="folder in folders" :key="folder.id" :value="folder.id">{{ folder.name }}</option></select></label>
+      <div class="dialog-actions-list"><button type="button" @click="selected && downloadModel(selected)"><AppIcon name="download" :size="19" />{{ locale.t('Download file') }}</button><button type="button" class="danger" @click="deleteSelected"><AppIcon name="trash" :size="19" />{{ locale.t('Delete') }}</button></div>
+      <template #actions><AppButton variant="ghost" @click="actionsOpen = false">{{ locale.t('Cancel') }}</AppButton><AppButton @click="saveActions">{{ locale.t('Save') }}</AppButton></template>
+    </AppDialog>
+
+    <AppDialog :open="folderActionsOpen" :title="locale.t('Folder actions')" @close="folderActionsOpen = false">
+      <label class="field">{{ locale.t('Folder Name') }}<input v-model="editFolderName" maxlength="80" /></label>
+      <div class="dialog-actions-list"><button type="button" class="danger" @click="deleteActiveFolder"><AppIcon name="trash" :size="19" />{{ locale.t('Delete folder and move contents to Root') }}</button></div>
+      <template #actions><AppButton variant="ghost" @click="folderActionsOpen = false">{{ locale.t('Cancel') }}</AppButton><AppButton @click="renameActiveFolder">{{ locale.t('Save') }}</AppButton></template>
     </AppDialog>
   </main>
 </template>
 
 <style scoped>
-.models-view {
-  min-height: 100dvh;
-  padding-bottom: calc(5.7rem + env(safe-area-inset-bottom));
-}
-
-.models-topbar {
-  position: sticky;
-  z-index: var(--z-header);
-  top: 0;
-  min-height: calc(var(--header-height) + env(safe-area-inset-top));
-  display: grid;
-  grid-template-columns: var(--touch-target) minmax(0, 1fr) var(--touch-target);
-  align-items: center;
-  gap: var(--space-2);
-  padding: env(safe-area-inset-top) max(var(--page-gutter), env(safe-area-inset-right)) 0 max(var(--page-gutter), env(safe-area-inset-left));
-  border-bottom: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-app-bg) 94%, transparent);
-  backdrop-filter: blur(16px);
-}
-
-.models-topbar > div {
-  min-width: 0;
-  display: grid;
-  text-align: center;
-}
-
-.models-topbar strong,
-.models-topbar small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.models-topbar small {
-  color: var(--color-text-subtle);
-  font-size: 0.65rem;
-}
-
-.models-content {
-  width: min(100%, var(--content-max));
-  margin: 0 auto;
-  padding: var(--space-4) max(var(--page-gutter), env(safe-area-inset-right)) var(--space-8) max(var(--page-gutter), env(safe-area-inset-left));
-}
-
-.models-intro {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  padding: var(--card-padding);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-card);
-}
-
-.models-intro h1 {
-  margin: 0.2rem 0 0;
-  font-size: 1.2rem;
-}
-
-.models-intro p:not(.eyebrow) {
-  margin: 0.35rem 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.75rem;
-  line-height: 1.45;
-}
-
-.models-section {
-  margin-top: var(--space-6);
-}
-
-.models-section > header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--space-2);
-}
-
-.models-section h2 {
-  margin: 0;
-  font-size: 0.9rem;
-}
-
-.models-section header span {
-  color: var(--color-text-subtle);
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-}
-
-.models-grid {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.model-skeleton {
-  height: 6.5rem;
-  border-radius: var(--radius-xl);
-}
-
-.model-card {
-  position: relative;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-card);
-}
-
-.model-card__open {
-  width: 100%;
-  min-height: 7.25rem;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-3);
-  border: 0;
-  border-radius: inherit;
-  padding: var(--card-padding) 3.2rem var(--card-padding) var(--card-padding);
-  background: transparent;
-  color: var(--color-text);
-  text-align: left;
-}
-
-.model-card__icon {
-  width: 3.2rem;
-  height: 3.2rem;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--tone-sky-border);
-  border-radius: var(--radius-lg);
-  background: var(--tone-sky-soft);
-  color: var(--tone-sky);
-}
-
-.model-card__copy {
-  min-width: 0;
-  display: grid;
-  gap: 0.25rem;
-}
-
-.model-card__copy strong,
-.model-card__copy code,
-.model-card__copy small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.model-card__copy code {
-  color: var(--color-accent-strong);
-  font-size: 0.68rem;
-}
-
-.model-card__copy small {
-  color: var(--color-text-subtle);
-  font-size: 0.7rem;
-}
-
-.model-card__delete {
-  position: absolute;
-  inset: 0.45rem 0.35rem auto auto;
-}
-
-.model-empty {
-  min-height: 55dvh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem var(--page-gutter);
-  text-align: center;
-}
-
-.model-empty > span {
-  width: 4.5rem;
-  height: 4.5rem;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-xl);
-  background: var(--tone-sky-soft);
-  color: var(--tone-sky);
-}
-
-.model-empty h1,
-.model-empty h2 {
-  margin: 1rem 0 0;
-  font-size: 1.25rem;
-}
-
-.model-empty p {
-  max-width: 24rem;
-  margin: 0.45rem 0 1.2rem;
-  color: var(--color-text-muted);
-  font-size: 0.82rem;
-  line-height: 1.5;
-}
-
-.models-create {
-  position: fixed;
-  z-index: var(--z-navigation);
-  inset: auto 0 0;
-  padding: var(--space-3) max(var(--page-gutter), env(safe-area-inset-right)) calc(var(--space-3) + env(safe-area-inset-bottom)) max(var(--page-gutter), env(safe-area-inset-left));
-  border-top: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-app-bg) 94%, transparent);
-  backdrop-filter: blur(18px);
-  display: grid;
-  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr);
-  gap: var(--space-2);
-}
-
-.models-create > * {
-  width: 100%;
-  max-width: var(--content-max);
-  margin: 0 auto;
-}
-
-.model-form {
-  display: grid;
-  gap: 0.45rem;
-}
-
-.model-form label {
-  margin-top: 0.35rem;
-  color: var(--color-text-muted);
-  font-size: 0.75rem;
-  font-weight: 750;
-}
-
-.model-identifier {
-  font-family: var(--font-mono);
-  font-size: 0.83rem;
-}
-
-@media (min-width: 720px) {
-  .models-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
+.models-body{width:min(100%,var(--content-max));margin:0 auto;padding:1rem max(var(--page-gutter),env(safe-area-inset-right)) 2rem max(var(--page-gutter),env(safe-area-inset-left))}.header-action{width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface);color:var(--color-text)}.header-action--primary{border-color:var(--color-accent);background:var(--color-accent);color:var(--color-on-accent)}.state{min-height:50dvh;display:grid;place-items:center;color:var(--color-text-subtle);text-align:center}.state--error{color:var(--color-danger)}.integration-banner{display:grid;gap:.75rem;border:1px solid var(--color-border);border-radius:var(--radius-xl);padding:1rem;background:var(--color-surface)}.integration-banner>div{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.75rem}.integration-banner>div>span{width:3rem;height:3rem;display:grid;place-items:center;border-radius:var(--radius-lg);background:#1f232a;color:#a8abb4}.integration-banner strong{font-size:.9rem}.integration-banner p{margin:.2rem 0 0;color:var(--color-text-subtle);font-size:.68rem;line-height:1.45}.integration-banner>a{min-height:44px;display:flex;align-items:center;justify-content:center;gap:.4rem;border-radius:var(--radius-md);background:var(--color-surface-raised);color:var(--color-text);font-size:.72rem;font-weight:800;text-decoration:none}.library-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.55rem;margin:1rem 0 .75rem}.search{min-height:44px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:.55rem;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:0 .75rem;background:var(--color-input-bg);color:var(--color-text-subtle)}.search input{min-width:0;border:0;outline:0;background:transparent;color:var(--color-text);font:inherit;font-size:16px}.library-tools>button{min-height:44px;display:flex;align-items:center;gap:.4rem;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:0 .75rem;background:var(--color-surface);color:var(--color-text);font-size:.68rem;font-weight:800}.folder-tabs{display:flex;gap:.4rem;overflow-x:auto;margin-bottom:.8rem;padding-bottom:.15rem;scrollbar-width:none}.folder-tabs button{flex:none;min-height:40px;border:1px solid var(--color-border);border-radius:var(--radius-pill);padding:0 .75rem;background:var(--color-surface);color:var(--color-text-subtle);font-size:.65rem;font-weight:750}.folder-tabs button.active{border-color:var(--color-accent);background:var(--color-accent-soft);color:var(--color-accent-strong)}.model-grid{display:grid;gap:.7rem}.model-card{position:relative;min-width:0;display:grid;grid-template-columns:4.6rem minmax(0,1fr) 44px;gap:.7rem;border:1px solid var(--color-border);border-radius:var(--radius-xl);padding:.75rem;background:var(--color-surface);box-shadow:var(--shadow-card)}.model-card__preview{position:relative;grid-row:1/3;width:4.6rem;height:4.6rem;display:grid;place-items:center;border-radius:var(--radius-lg);background:var(--color-surface-raised);color:var(--color-accent)}.model-card__preview span{position:absolute;right:.3rem;bottom:.25rem;color:var(--color-text-subtle);font-family:var(--font-mono);font-size:.5rem;font-weight:900}.model-card__copy{min-width:0;display:grid;align-content:center;gap:.16rem}.model-card__copy strong,.model-card__copy code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.model-card__copy strong{font-size:.82rem}.model-card__copy code{color:var(--color-text-subtle);font-size:.58rem}.model-card__copy small{color:var(--color-text-subtle);font-size:.58rem}.model-card__open{grid-column:2;min-height:40px;border:1px solid var(--color-accent-border);border-radius:var(--radius-md);background:var(--color-accent-soft);color:var(--color-accent-strong);font-size:.65rem;font-weight:800}.model-card__menu{grid-column:3;grid-row:1/3;align-self:center;width:44px;height:44px;display:grid;place-items:center;border:0;border-radius:var(--radius-md);background:transparent;color:var(--color-text-subtle)}.empty{min-height:45dvh;display:grid;place-items:center;align-content:center;gap:.45rem;text-align:center}.empty>span{width:4.3rem;height:4.3rem;display:grid;place-items:center;border-radius:var(--radius-xl);background:var(--color-accent-soft);color:var(--color-accent-strong)}.empty h2{margin:.5rem 0 0;font-size:1rem}.empty p{max-width:28rem;margin:0 0 .7rem;color:var(--color-text-subtle);font-size:.7rem;line-height:1.5}.field{display:grid;gap:.35rem;color:var(--color-text-muted);font-size:.7rem;font-weight:750}.field input,.field select{min-height:44px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:0 .75rem;background:var(--color-input-bg);color:var(--color-text);font:inherit;font-size:16px}.dialog-actions-list{display:grid;gap:.4rem;margin-top:.8rem}.dialog-actions-list button{min-height:44px;display:flex;align-items:center;gap:.55rem;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:0 .75rem;background:var(--color-surface-raised);color:var(--color-text);font-size:.7rem;font-weight:750}.dialog-actions-list .danger{border-color:var(--color-danger-border);background:var(--color-danger-soft);color:var(--color-danger)}.visually-hidden{position:fixed;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}@media(min-width:680px){.integration-banner{grid-template-columns:minmax(0,1fr) auto;align-items:center}.integration-banner>a{padding:0 1rem}.model-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:380px){.model-card{grid-template-columns:4rem minmax(0,1fr) 44px}.model-card__preview{width:4rem;height:4rem}}
 </style>
